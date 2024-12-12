@@ -1,4 +1,6 @@
 AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
+- [CLI](#cli)
+- [EBS](#ebs)
 - [S3](#s3)
 - [IAM](#iam)
 - [Amazon Inspector](#amazon-inspector)
@@ -6,10 +8,12 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Cloudfront](#cloudfront)
 - [CDK](#cdk)
 - [ECS](#ecs)
+- [SNS](#sns)
 - [SQS](#sqs)
+- [KMS](#kms)
 - [Parameter store](#parameter-store)
 - [Kinesis](#kinesis)
-- [Codebuild](#codebuild)
+- [CodeBuild](#codebuild)
 - [CodeDeploy](#codedeploy)
 - [Application Load Balancer (ALB)](#application-load-balancer-alb)
 - [Auto Scaling](#auto-scaling)
@@ -20,24 +24,33 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Lambda](#lambda)
 - [Step functions](#step-functions)
 - [API Gateway](#api-gateway)
+- [DynamoDB](#dynamodb)
 - [RDS](#rds)
 - [EC2](#ec2)
 - [Cloudformation](#cloudformation)
 - [SAM](#sam)
 - [CodeCommit](#codecommit)
 
+## CLI
+- --dry-run: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
+
+## EBS
+- gp2: minimum of 100 IOPS (at 33.33 GiB and below) and a maximum of 16,000 IOPS (at 5,334 GiB and above)
+
+- io1 4-16 GiB, 100-64k(Nitro) IOPS, ratio IOPS/GB <= 50:1
+
 ## S3
 **S3 Analytics**: Analyze storage access patterns to help you decide when to transition the right data to the right storage class
 
 ## IAM
-**Access Analyzer**: You can set the scope for the analyzer to an organization or an AWS account. Identify unintended access to your resources and data, which is a security risk. Helps inspecting unused access to guide you toward least privilege.
+**Access Analyzer**: You can set the scope for the analyzer to an **organization or an AWS account**. Identify unintended access to your resources and data, which is a security risk. Helps inspecting unused access to guide you toward least privilege.
 When the **unused access analyzer is enabled**, IAM Access Analyzer continuously analyzes your accounts to identify unused access and creates a centralized dashboard with findings. The findings highlight unused roles, unused access keys for IAM users, and unused passwords for IAM users. 
 
 ## Amazon Inspector
-Amazon Inspector is an automated security assessment service that helps improve the security and compliance of applications deployed on AWS. Amazon Inspector automatically assesses applications for exposure, vulnerabilities, and deviations from best practices.
+Amazon Inspector is an automated security assessment service that helps improve the **security and compliance** of applications deployed on AWS. Amazon Inspector automatically assesses applications for exposure, vulnerabilities, and deviations from best practices.
 
 ## AWS Trusted Advisor
-AWS Trusted Advisor is an online tool that provides you real-time guidance to help you provision your resources following AWS best practices on cost optimization, security, fault tolerance, service limits, and performance improvement.
+AWS Trusted Advisor is an online tool that provides you real-time guidance to help you provision your resources following AWS best practices on **cost optimization**, security, fault tolerance, service limits, and performance improvement.
 
 ## Cloudfront
 Client - Cloudfront (HTTPS), Cloudfront - Backend/origin (HTTPS)
@@ -95,26 +108,65 @@ If you terminate a container instance in the **RUNNING** state, that container i
 
 If you terminate a container instance while it is in the **STOPPED** state, that container instance isn't automatically removed from the cluster. You will **need to deregister your container instance** in the STOPPED state by using the Amazon ECS console or AWS Command Line Interface.
 
+## SNS
+By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
+
 ## SQS
 Amazon SQS can scale transparently to handle the load without any provisioning instructions from you.
 
+Max message size -> **256 KB**
+
+Delay queues time range - 0 sec, 15 min
+
+Visibility timeout: 0 sec, 12 hours. Default 30 sec
+
+## KMS
+Support sending data up to **4 KB** to be encrypted directly.
+
+To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKeyWithoutPlaintext` and `Decrypt`
+
+**Envelope encryption** reduces the network load since only the request and delivery of the much smaller **data key** go over the network. The data key is used locally in your application or encrypting AWS service, avoiding the need to send the entire block of data to AWS KMS and suffer network latency.
+
+
 ## Parameter store
-SecureString are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of SecureString parameters, 1 API call per decryption.
+`SecureString` are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of `SecureString` parameters, 1 API call per decryption.
 
 ## Kinesis
-The Amazon Kinesis Client Library (KCL) delivers all records for a given partition key to the same record processor
+limits can be exceeded by either data throughput or the number of PUT records. While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
+
+The `Amazon Kinesis Client Library (KCL)` delivers all records for a given partition key to the same record processor
 
 Each `PutRecords` request can support up to 500 records. Each record in the request can be as large as 1 MiB, up to a limit of 5 MiB for the entire request, including partition keys. Each shard can support writes up to 1,000 records per second, up to a maximum data write of 1 MiB per second.
 
-## Codebuild
+## CodeBuild
 `CODEBUILD_KMS_KEY_ID` The identifier of the AWS KMS key that CodeBuild is using to encrypt the build output artifact (for example, `arn:aws:kms:region-ID:account-ID:key/key-ID` or alias/key-alias).
 
+A typical application build process includes phases like preparing the environment, updating the configuration, downloading dependencies, running unit tests, and finally, packaging the built artifact.
+
+Dependent files do not change frequently between builds, you can noticeably **reduce your build time by caching dependencies**.
+
+Can push metrics to Cloudwatch, scope: Project level or AWS account level. These metrics include the number of total builds, failed builds, successful builds, and the duration of builds
+
 ## CodeDeploy
-- In Place Deployment: Only for EC2/On-premises. The application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. You can use a load balancer so that each instance is deregistered during its deployment and then restored to service after the deployment is complete.
-- Blue/green Deployment
-  - Lambda: All deploys are Blue/Green
-  - ECS: traffic is shifted to a replacement task set in the same service. Traffic shifting can be **linear or canary**
-  - EC2/On-premises: Instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group. Instances in the original environment are deregistered and can be terminated or kept running. 
+`appspec.yml` for specifying **deployment hooks**. An EC2/On-Premises deployment hook is executed once per deployment to an instance. You can specify one or more scripts to run in a hook. Some hooks:
+- **ValidateService** is the last deployment lifecycle event. It is used to verify the deployment was completed successfully.
+- **AfterInstall** - You can use this deployment lifecycle event for tasks such as configuring your application or changing file permissions.
+- **ApplicationStart** - You typically use this deployment lifecycle event to restart services that were stopped during **ApplicationStop**
+- **AllowTraffic** - During this deployment lifecycle event, internet traffic is allowed to access instances after a deployment. This event is reserved for the AWS CodeDeploy agent and cannot be used to run scripts
+
+The AppSpec file is used to:
+- Map the source files in your application revision to their destinations on the instance.
+- Specify custom permissions for deployed files.
+- Specify scripts to be run on each instance at various stages of the deployment process.
+
+During deployment, the **CodeDeploy agent** looks up the name of the current event in the hooks section of the **AppSpec file**. If the event is not found, the CodeDeploy agent moves on to the next step. If the event is found, the CodeDeploy agent retrieves the list of scripts to execute. The scripts are run sequentially, in the order in which they appear in the file. The status of each script is logged in the CodeDeploy agent log file on the instance.
+
+**In Place Deployment**: Only for EC2/On-premises. The application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. You can use a load balancer so that each instance is deregistered during its deployment and then restored to service after the deployment is complete.
+  
+**Blue/green Deployment**:
+- Lambda: All deploys are Blue/Green
+- ECS: traffic is shifted to a replacement task set in the same service. Traffic shifting can be **linear or canary**
+- EC2/On-premises: Instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group. Instances in the original environment are deregistered and can be terminated or kept running. 
 
 
 
@@ -138,7 +190,7 @@ Target Tracking Scaling policy metrics:
 ## Beanstalk
 You can deploy any version of your application to any environment. Environments can be long-running or temporary. When you terminate an environment, you can save its configuration to recreate it later.
 
-`.ebextensions/<mysettings>.config` : You can add AWS Elastic Beanstalk configuration files (`.ebextensions`) to your web application's source code to configure your environment and customize the AWS resources that it contains.
+`.ebextensions/<mysettings>.config` : You can add AWS Elastic Beanstalk configuration files (`.ebextensions`) to your web application's source code to configure your environment and customize the AWS resources that it contains. `.ebextensions` must be placed at the **root** of the source code, `option_settings` section of a configuration file defines values for configuration options (Elastic Beanstalk environment, the AWS resources in it, and the software that runs your application).
 
 Any resources created as part of your `.ebextensions` is part of your Elastic Beanstalk template and **will get deleted if the environment is terminated**
 
@@ -155,6 +207,8 @@ Any resources created as part of your `.ebextensions` is part of your Elastic Be
 **Rolling with additional batch**: **Slower than rolling**. Launches an extra batch of instances, then performs a rolling deployment. Launching the extra batch **takes time**, and ensures that the same **bandwidth is retained throughout the deployment**. This policy also **avoids any reduced availability**, although at a cost of an even **longer deployment** time compared to the Rolling method. Finally, this option is suitable if you must maintain the same bandwidth throughout the deployment
 
 **Blue/Green**: DNS changes
+
+![deployments.jpg](deployments.jpg)
 
 ## Cloudwatch logs
 You can export from multiple **log groups** or multiple **time ranges** to **s3 bucket**
@@ -173,12 +227,23 @@ Visibility timeout 0-12 hours, default to 30 seconds.
 
 1 byte < Message size < 256 KB
 
+120,000 inflight messages (received from a queue by a consumer, but not yet deleted from the queue)
+
 **DeleteQueue** -> When you delete a queue, the deletion process takes up to 60 seconds. Meanwhile, messages sent to the queue can succed and be consumed.
 
 ## Lambda
+
+ENV variables can have a maximum size of **4 KB**
+
 Alias can only point to function version, not another alias.
 
 VPC: When you connect a function to a VPC, Lambda creates an **elastic network interface** for each combination of the security group and subnet in your function's VPC configuration.
+
+Lambda does not support functions that use **multi-architecture container images**.
+
+Image max size: 10 GB
+
+To increase **provisioned concurrency** automatically as needed, use the Application Auto Scaling API to register a target and create a scaling policy. By allocating provisioned concurrency before an increase in invocations, you can ensure that all requests are served by **initialized instances** with very low latency.
 
 ## Step functions
 A Task state (`"Type": "Task"`) represents a single unit of work performed by a state machine.
@@ -193,6 +258,19 @@ A Task state (`"Type": "Task"`) represents a single unit of work performed by a 
 
 **Lambda authorizer**: Lambda authorizer uses bearer token authentication strategies, such as OAuth or SAML. You must first create the AWS Lambda function that implements the logic to authorize and, if necessary, to authenticate the caller.
 
+## DynamoDB
+2 backup methods: on-demand and PITR, they copy the table to s3 but you do NOT have access to the s3 bucket.
+
+DynamoDB uses **eventually consistent reads** by default. Read operations (such as GetItem, Query, and Scan) provide a `ConsistentRead` parameter to read the most recent value.
+
+`UpdateItem` action of DynamoDB APIs, edits an existing item's attributes or adds a new item to the table if it does not already exist.
+
+**Transactions**: 
+- `TransactWriteItems`: idempotent, groups up to 25 write actions in a single all-or-nothing operation. The aggregate size of the items in the transaction cannot exceed **4 MB**.
+- `TransactGetItems`
+
+With a `BatchWriteItem` operation, it is possible that **only some of the actions** in the batch succeed while the others do not
+
 ## RDS
 IAM authorization: Available for **MySQL, PostGres and MariaDB**
 
@@ -206,10 +284,28 @@ Change `DeleteOnTermination` default=True for the root volume, and default=False
 - When the instance is running can only be changed via CLI
 - From the console can only be set when you launch a new instance 
 
+ A **Zonal Reserved Instance** provides a capacity reservation in the specified Availability Zone. Capacity Reservations enable you to reserve capacity for your Amazon EC2 instances in a specific Availability Zone for any duration
+
+ **Regional Reserved Instance** does not provide capacity reservation.
 ## Cloudformation
 `Fn::FindInMap` returns the value corresponding to keys in a two-level map. Map of all the possible values for the base AMI: `!FindInMap [ MapName, TopLevelKey, SecondLevelKey ]`
 
 `Conditions` can only be associated with `Resources` or `Output` so that Cloudformation only creates the resource or output if the condition is True.
+
+Valid parameter types:
+```String – A literal string
+Number – An integer or float
+List<Number> – An array of integers or floats
+CommaDelimitedList – An array of literal strings that are separated by commas
+AWS::EC2::KeyPair::KeyName – An Amazon EC2 key pair name
+AWS::EC2::SecurityGroup::Id – A security group ID
+AWS::EC2::Subnet::Id – A subnet ID
+AWS::EC2::VPC::Id – A VPC ID
+List<AWS::EC2::VPC::Id> – An array of VPC IDs
+List<AWS::EC2::SecurityGroup::Id> – An array of security group IDs
+List<AWS::EC2::Subnet::Id> – An array of subnet IDs
+```
+
 
 ## SAM
 
