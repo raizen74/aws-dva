@@ -12,9 +12,11 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [SQS](#sqs)
 - [KMS](#kms)
 - [Parameter store](#parameter-store)
+- [Secrets Manager](#secrets-manager)
 - [Kinesis](#kinesis)
 - [CodeBuild](#codebuild)
 - [CodeDeploy](#codedeploy)
+- [CodePipeline](#codepipeline)
 - [Application Load Balancer (ALB)](#application-load-balancer-alb)
 - [Auto Scaling](#auto-scaling)
 - [Beanstalk](#beanstalk)
@@ -30,6 +32,7 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Cloudformation](#cloudformation)
 - [SAM](#sam)
 - [CodeCommit](#codecommit)
+- [X-Ray](#x-ray)
 
 ## CLI
 - --dry-run: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
@@ -41,6 +44,19 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 
 ## S3
 **S3 Analytics**: Analyze storage access patterns to help you decide when to transition the right data to the right storage class
+
+**Replication**
+- Replicated objects RETAIN metadata
+- SRR and CRR -> S3 bucket level, a shared prefix level, or an object level using S3 object tags
+- Lifecycle actions are not replicated
+
+**ACLs**, customers can grant specific permissions (i.e. READ, WRITE, FULL_CONTROL) to specific users for an individual bucket or object.
+
+**Query String Authentication** also referred as **Pre-signed URL**
+
+**S3 Object Ownership** has two settings: 1. Object writer – The uploading account will own the object. 2. Bucket owner preferred – The bucket owner will own the object if the object is uploaded with the bucket-owner-full-control canned ACL. Without this setting and canned ACL, the object is uploaded and remains owned by the uploading account.
+
+**Access Analyzer for S3** helps review all buckets that have bucket access control lists (ACLs), bucket policies, or access point policies that grant public or shared access. Access Analyzer for S3 alerts you to buckets that are configured to allow access to anyone on the internet or other AWS accounts, including AWS accounts outside of your organization.
 
 ## IAM
 **Access Analyzer**: You can set the scope for the analyzer to an **organization or an AWS account**. Identify unintended access to your resources and data, which is a security risk. Helps inspecting unused access to guide you toward least privilege.
@@ -114,7 +130,7 @@ By default, a topic **subscriber** receives every message that's published to th
 ## SQS
 Amazon SQS can scale transparently to handle the load without any provisioning instructions from you.
 
-Max message size -> **256 KB**
+Max message size -> **256 KB**. To manage large messages, you can use Amazon S3 and the Amazon **SQS Extended Client Library for Java**. This is especially useful for storing and consuming messages up to **2 GB**.
 
 Delay queues time range - 0 sec, 15 min
 
@@ -131,6 +147,12 @@ To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKe
 ## Parameter store
 `SecureString` are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of `SecureString` parameters, 1 API call per decryption.
 
+You **cannot use a resource-based policy with a parameter** in the Parameter Store.
+
+Parameter Store supports parameter policies that are available for parameters that use the advanced parameters tier. Parameter policies help you manage a growing set of parameters by allowing you to assign specific criteria to a parameter such as an **expiration date or TTL**. Parameter policies are especially helpful in forcing you to update or delete passwords and configuration data stored in Parameter Store, a capability of AWS Systems Manager. So this option is incorrect.
+## Secrets Manager
+You can attach **resource-based** policies to a **secret**, to allow Principals e.g. IAM **Roles**, **Users**, other AWS **accounts**... to access them.
+
 ## Kinesis
 limits can be exceeded by either data throughput or the number of PUT records. While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
 
@@ -146,6 +168,8 @@ A typical application build process includes phases like preparing the environme
 Dependent files do not change frequently between builds, you can noticeably **reduce your build time by caching dependencies**.
 
 Can push metrics to Cloudwatch, scope: Project level or AWS account level. These metrics include the number of total builds, failed builds, successful builds, and the duration of builds
+
+CodeBuild scales automatically to meet peak build requests.
 
 ## CodeDeploy
 `appspec.yml` for specifying **deployment hooks**. An EC2/On-Premises deployment hook is executed once per deployment to an instance. You can specify one or more scripts to run in a hook. Some hooks:
@@ -164,11 +188,14 @@ During deployment, the **CodeDeploy agent** looks up the name of the current eve
 **In Place Deployment**: Only for EC2/On-premises. The application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. You can use a load balancer so that each instance is deregistered during its deployment and then restored to service after the deployment is complete.
   
 **Blue/green Deployment**:
-- Lambda: All deploys are Blue/Green
+- Lambda: All deploys are Blue/Green. Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function
 - ECS: traffic is shifted to a replacement task set in the same service. Traffic shifting can be **linear or canary**
-- EC2/On-premises: Instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group. Instances in the original environment are deregistered and can be terminated or kept running. 
+- EC2/On-premises: Instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group. Traffic is shifted from one set of instances in the original environment to a replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running. 
 
+**CodeDeploy agent** is a software package that, when installed and configured on an instance, makes it possible for that instance to be used in CodeDeploy deployments. The CodeDeploy agent archives revisions and log files on instances. The CodeDeploy agent cleans up these artifacts to conserve disk space. You can use the `:max_revisions:` option in the agent configuration file to specify the number of application revisions to the archive by entering any positive integer. CodeDeploy also archives the log files for those revisions. All others are deleted, except for the log file of the last successful deployment
 
+## CodePipeline
+You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. Approval actions can't be added to Source stages. Source stages can contain only source actions.
 
 ## Application Load Balancer (ALB)
 Sticky sessions (AWSALB cookie) are a mechanism to route requests to the same target in a target group. To use sticky sessions, the clients must support **cookies**.
@@ -220,7 +247,8 @@ You can configure custom metrics:
   
 Monitoring:
 - Basic monitoring
-- Detailed monitoring: provides more frequent metrics, published at one-minute intervals, instead of the five-minute intervals used in Amazon EC2 basic monitoring. Detailed monitoring is offered by only some services.
+- Detailed monitoring: provides more frequent metrics, published at **one-minute intervals**, instead of the **five-minute intervals** used in Amazon EC2 basic monitoring. Detailed monitoring is offered by only some services.
+- High resolution `PutMetric` API call with `StorageResolution` param. `GetMetricStatistics` specify 1, 5, 10, 30 or any multiple of 60 for **high-resolution**. Multiple of 60 for **standard-resolution**
 
 ## SQS
 Visibility timeout 0-12 hours, default to 30 seconds.
@@ -253,10 +281,18 @@ A Task state (`"Type": "Task"`) represents a single unit of work performed by a 
 
 `"Type": "Fail"` stops the execution of the state machine and marks it as a failure unless it is caught by a Catch block
 
+**Express Workflows** support event rates of more than 100,000 per second.
+
+**Standard Workflows** are more suitable for long-running, durable, and auditable workflows where repeating workflow steps is expensive, support human approval steps.
+
+Express Workflows have a maximum duration of five minutes and Standard workflows have a maximum duration of one year.
+
 ## API Gateway
 **Promote a stage**: The promotion can be done by redeploying the API to the prod stage OR updating a stage variable value from the stage name of test to that of prod.
 
 **Lambda authorizer**: Lambda authorizer uses bearer token authentication strategies, such as OAuth or SAML. You must first create the AWS Lambda function that implements the logic to authorize and, if necessary, to authenticate the caller.
+
+ The default TTL value for API caching is 300 seconds. The maximum TTL value is 3600 seconds. TTL=0 means caching is disabled.
 
 ## DynamoDB
 2 backup methods: on-demand and PITR, they copy the table to s3 but you do NOT have access to the s3 bucket.
@@ -271,6 +307,9 @@ DynamoDB uses **eventually consistent reads** by default. Read operations (such 
 
 With a `BatchWriteItem` operation, it is possible that **only some of the actions** in the batch succeed while the others do not
 
+**adaptive capacity**:
+![adaptive capacity](adaptive.jpg)
+
 ## RDS
 IAM authorization: Available for **MySQL, PostGres and MariaDB**
 
@@ -279,20 +318,24 @@ You can enable **storage autoscaling** and set the max storage limit, triggers:
 - The low-storage condition lasts at least five minutes.
 - At least six hours have passed since the last storage modification.
 
+Automated backups (0-35 days retention) are Region bound while manual snapshots and Read Replicas are supported across multiple Regions.
+
 ## EC2
 Change `DeleteOnTermination` default=True for the root volume, and default=False for the rest of the volumes:
 - When the instance is running can only be changed via CLI
 - From the console can only be set when you launch a new instance 
 
- A **Zonal Reserved Instance** provides a capacity reservation in the specified Availability Zone. Capacity Reservations enable you to reserve capacity for your Amazon EC2 instances in a specific Availability Zone for any duration
+A **Zonal Reserved Instance** provides a capacity reservation in the specified Availability Zone. Capacity Reservations enable you to reserve capacity for your Amazon EC2 instances in a specific Availability Zone for any duration
 
- **Regional Reserved Instance** does not provide capacity reservation.
+**Regional Reserved Instance** does not provide capacity reservation.
+
+**Detailed Monitoring** you define the frequency at which the metric data has to be sent to CloudWatch, from 5 minutes to 1-minute frequency window.
 ## Cloudformation
 `Fn::FindInMap` returns the value corresponding to keys in a two-level map. Map of all the possible values for the base AMI: `!FindInMap [ MapName, TopLevelKey, SecondLevelKey ]`
 
 `Conditions` can only be associated with `Resources` or `Output` so that Cloudformation only creates the resource or output if the condition is True.
 
-Valid parameter types:
+**Parameters** Valid types:
 ```String – A literal string
 Number – An integer or float
 List<Number> – An array of integers or floats
@@ -306,6 +349,7 @@ List<AWS::EC2::SecurityGroup::Id> – An array of security group IDs
 List<AWS::EC2::Subnet::Id> – An array of subnet IDs
 ```
 
+`AllowedValues` -> CommaDelimitedList
 
 ## SAM
 
@@ -323,3 +367,7 @@ Credential types:
 - SSH Keys
 - Git credentials
 - AWS Access keys
+
+## X-Ray
+To ensure efficient tracing and provide a representative sample of the requests that your application serves, the X-Ray SDK applies a sampling algorithm to determine which requests get traced. By default, the X-Ray SDK records the first request each second, and five percent of any additional requests. X-Ray sampling is enabled directly from the AWS console, hence your application code does not need to change.
+
