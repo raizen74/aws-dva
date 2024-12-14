@@ -14,6 +14,7 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Parameter store](#parameter-store)
 - [Secrets Manager](#secrets-manager)
 - [Kinesis](#kinesis)
+- [CodeCommit](#codecommit)
 - [CodeBuild](#codebuild)
 - [CodeDeploy](#codedeploy)
 - [CodePipeline](#codepipeline)
@@ -22,17 +23,18 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Beanstalk](#beanstalk)
 - [Cloudwatch logs](#cloudwatch-logs)
 - [Cloudwatch metrics](#cloudwatch-metrics)
-- [SQS](#sqs-1)
+- [CloudWatch Alarms](#cloudwatch-alarms)
 - [Lambda](#lambda)
 - [Step functions](#step-functions)
 - [API Gateway](#api-gateway)
 - [DynamoDB](#dynamodb)
+- [ElastiCache](#elasticache)
 - [RDS](#rds)
 - [EC2](#ec2)
 - [Cloudformation](#cloudformation)
 - [SAM](#sam)
-- [CodeCommit](#codecommit)
 - [X-Ray](#x-ray)
+- [CloudTrail](#cloudtrail)
 
 ## CLI
 - --dry-run: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
@@ -43,6 +45,8 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - io1 4-16 GiB, 100-64k(Nitro) IOPS, ratio IOPS/GB <= 50:1
 
 ## S3
+Server Side Encryption does NOT encrypt object metadata.
+
 **S3 Analytics**: Analyze storage access patterns to help you decide when to transition the right data to the right storage class
 
 **Replication**
@@ -128,13 +132,21 @@ If you terminate a container instance while it is in the **STOPPED** state, that
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
 ## SQS
+**FIFO queues not allowed** for s3 event notification destination.
+
+Visibility timeout 0-12 hours, default to 30 seconds.
+
+1 byte < Message size < 256 KB
+
+120,000 inflight messages (20k FIFO) (received from a queue by a consumer, but not yet deleted from the queue)
+
+**DeleteQueue** -> When you delete a queue, the deletion process takes up to 60 seconds. Meanwhile, messages sent to the queue can succed and be consumed.
+
 Amazon SQS can scale transparently to handle the load without any provisioning instructions from you.
 
 Max message size -> **256 KB**. To manage large messages, you can use Amazon S3 and the Amazon **SQS Extended Client Library for Java**. This is especially useful for storing and consuming messages up to **2 GB**.
 
 Delay queues time range - 0 sec, 15 min
-
-Visibility timeout: 0 sec, 12 hours. Default 30 sec
 
 ## KMS
 Support sending data up to **4 KB** to be encrypted directly.
@@ -154,18 +166,36 @@ Parameter Store supports parameter policies that are available for parameters th
 You can attach **resource-based** policies to a **secret**, to allow Principals e.g. IAM **Roles**, **Users**, other AWS **accounts**... to access them.
 
 ## Kinesis
-limits can be exceeded by either data throughput or the number of PUT records. While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
+Limits can be exceeded by either data throughput or the number of PUT records. While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
 
 The `Amazon Kinesis Client Library (KCL)` delivers all records for a given partition key to the same record processor
 
 Each `PutRecords` request can support up to 500 records. Each record in the request can be as large as 1 MiB, up to a limit of 5 MiB for the entire request, including partition keys. Each shard can support writes up to 1,000 records per second, up to a maximum data write of 1 MiB per second.
 
+**Kinesis Agent** is a stand-alone Java software application that offers an easy way to collect and send data to Kinesis Data Streams. The agent continuously monitors a set of files and sends new data to your stream. The agent handles file rotation, checkpointing, and retry upon failures. It delivers all of your data in a reliable, timely, and simple manner. It also emits Amazon CloudWatch metrics to help you better monitor and troubleshoot the streaming process.
+
+You can install the agent on Linux-based server environments such as web servers, log servers, and database servers. After installing the agent, configure it by specifying the files to monitor and the stream for the data. After the agent is configured, it durably collects data from the files and reliably sends it to the stream.
+
+The agent can also pre-process the records parsed from monitored files before sending them to your stream. You can enable this feature by adding the dataProcessingOptions configuration setting to your file flow. One or more processing options can be added and they will be performed in the specified order.
+
+## CodeCommit
+Data in AWS CodeCommit repositories is encrypted in transit and at rest.
+
+Credential types:
+- SSH Keys
+- Git credentials
+- AWS Access keys
+
+Migrate GitHub repos to CodeCommit -> Git credentials generated from IAM
+
 ## CodeBuild
 `CODEBUILD_KMS_KEY_ID` The identifier of the AWS KMS key that CodeBuild is using to encrypt the build output artifact (for example, `arn:aws:kms:region-ID:account-ID:key/key-ID` or alias/key-alias).
 
-A typical application build process includes phases like preparing the environment, updating the configuration, downloading dependencies, running unit tests, and finally, packaging the built artifact.
+A typical application build process includes phases like preparing the environment, updating the configuration, downloading dependencies, running unit tests, and finally, packaging the built artifact. CodeBuild can upload artifacts to s3, attach an IAM role with s3 permissions.
 
 Dependent files do not change frequently between builds, you can noticeably **reduce your build time by caching dependencies**.
+
+![cache](codebuild-cache.jpg)
 
 Can push metrics to Cloudwatch, scope: Project level or AWS account level. These metrics include the number of total builds, failed builds, successful builds, and the duration of builds
 
@@ -177,6 +207,10 @@ CodeBuild scales automatically to meet peak build requests.
 - **AfterInstall** - You can use this deployment lifecycle event for tasks such as configuring your application or changing file permissions.
 - **ApplicationStart** - You typically use this deployment lifecycle event to restart services that were stopped during **ApplicationStop**
 - **AllowTraffic** - During this deployment lifecycle event, internet traffic is allowed to access instances after a deployment. This event is reserved for the AWS CodeDeploy agent and cannot be used to run scripts
+
+![hooks](hooks.jpg)
+
+![hooks-v2](hooksv2.jpg)
 
 The AppSpec file is used to:
 - Map the source files in your application revision to their destinations on the instance.
@@ -190,14 +224,24 @@ During deployment, the **CodeDeploy agent** looks up the name of the current eve
 **Blue/green Deployment**:
 - Lambda: All deploys are Blue/Green. Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function
 - ECS: traffic is shifted to a replacement task set in the same service. Traffic shifting can be **linear or canary**
-- EC2/On-premises: Instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group. Traffic is shifted from one set of instances in the original environment to a replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running. 
+- EC2: **New** instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group causing traffic to be **re-route** from one set of instances in the original environment to the replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running.
+- On-premises: B/G deploys do not work.
+
+![codedeploy](codedeploy.jpg)
 
 **CodeDeploy agent** is a software package that, when installed and configured on an instance, makes it possible for that instance to be used in CodeDeploy deployments. The CodeDeploy agent archives revisions and log files on instances. The CodeDeploy agent cleans up these artifacts to conserve disk space. You can use the `:max_revisions:` option in the agent configuration file to specify the number of application revisions to the archive by entering any positive integer. CodeDeploy also archives the log files for those revisions. All others are deleted, except for the log file of the last successful deployment
+
+CodeDeploy **rolls back deployments** by redeploying a previously deployed revision of an application as a new deployment. These rolled-back deployments are technically new deployments, with new deployment IDs, rather than restored versions of a previous deployment.
 
 ## CodePipeline
 You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. Approval actions can't be added to Source stages. Source stages can contain only source actions.
 
 ## Application Load Balancer (ALB)
+After you create a target group, you cannot change its target type. The following are the possible target types:
+- `Instance` - The targets are specified by instance ID
+- `IP` - The targets are IP addresses. You can specify IP addresses from **specific CIDR blocks only**. **You can't specify publicly routable IP addresses.**
+- `Lambda` - The target is a Lambda function
+
 Sticky sessions (AWSALB cookie) are a mechanism to route requests to the same target in a target group. To use sticky sessions, the clients must support **cookies**.
 
 A Classic Load Balancer with HTTP or HTTPS listeners might route more traffic to higher-capacity instance types.
@@ -215,7 +259,7 @@ Target Tracking Scaling policy metrics:
 - ASGAverageNetworkOut - Average number of bytes sent out on all network interfaces by the Auto Scaling group
 
 ## Beanstalk
-You can deploy any version of your application to any environment. Environments can be long-running or temporary. When you terminate an environment, you can save its configuration to recreate it later.
+You can deploy any version of your application to any environment. Environments can be long-running or temporary. When you terminate an environment, **you can save its configuration** to recreate it later.
 
 `.ebextensions/<mysettings>.config` : You can add AWS Elastic Beanstalk configuration files (`.ebextensions`) to your web application's source code to configure your environment and customize the AWS resources that it contains. `.ebextensions` must be placed at the **root** of the source code, `option_settings` section of a configuration file defines values for configuration options (Elastic Beanstalk environment, the AWS resources in it, and the software that runs your application).
 
@@ -240,6 +284,10 @@ Any resources created as part of your `.ebextensions` is part of your Elastic Be
 ## Cloudwatch logs
 You can export from multiple **log groups** or multiple **time ranges** to **s3 bucket**
 
+Log group data is **always encrypted** in CloudWatch Logs. You can optionally use AWS AWS Key Management Service for this encryption. If you do, the encryption is done using an AWS KMS (AWS KMS) customer master key (CMK). Encryption using AWS KMS is enabled at the log group level, by associating a CMK with a log group, either when you create the log group or after it exists.
+
+![log](log.jpg)
+
 ## Cloudwatch metrics
 You can configure custom metrics:
 - Standard resolution (default), with data having a one-minute granularity
@@ -250,14 +298,19 @@ Monitoring:
 - Detailed monitoring: provides more frequent metrics, published at **one-minute intervals**, instead of the **five-minute intervals** used in Amazon EC2 basic monitoring. Detailed monitoring is offered by only some services.
 - High resolution `PutMetric` API call with `StorageResolution` param. `GetMetricStatistics` specify 1, 5, 10, 30 or any multiple of 60 for **high-resolution**. Multiple of 60 for **standard-resolution**
 
-## SQS
-Visibility timeout 0-12 hours, default to 30 seconds.
+Metric data is kept for 15 months, enabling you to view both up-to-the-minute data and historical data.
+Data points with a period of less than 60 seconds are available for 3 hours. These data points are high-resolution custom metrics. Data points with a period of 60 seconds (1 minute) are available for 15 days Data points with a period of 300 seconds (5 minute) are available for 63 days Data points with a period of 3600 seconds (1 hour) are available for 455 days (15 months)
 
-1 byte < Message size < 256 KB
+## CloudWatch Alarms
+A metric alarm has the following possible states:
 
-120,000 inflight messages (received from a queue by a consumer, but not yet deleted from the queue)
+OK – The metric or expression is within the defined threshold.
 
-**DeleteQueue** -> When you delete a queue, the deletion process takes up to 60 seconds. Meanwhile, messages sent to the queue can succed and be consumed.
+ALARM – The metric or expression is outside of the defined threshold.
+
+INSUFFICIENT_DATA – The alarm has just started, the metric is not available, or not enough data is available for the metric to determine the alarm state.
+
+An alarm watches a single metric over a specified time, and performs one or more specified actions, based on the value of the metric relative to a threshold over time. The action is a notification sent to an Amazon SNS topic or an Auto Scaling policy. You can also add alarms to dashboards.
 
 ## Lambda
 
@@ -295,6 +348,10 @@ Express Workflows have a maximum duration of five minutes and Standard workflows
  The default TTL value for API caching is 300 seconds. The maximum TTL value is 3600 seconds. TTL=0 means caching is disabled.
 
 ## DynamoDB
+DynamoDB streams -> item level log for up to 24 hours.
+
+By default, the `Scan` operation processes data sequentially. Amazon DynamoDB returns data to the application in 1 MB increments, and an application performs additional Scan operations to retrieve the next 1 MB of data. -> Use **parallel scans**
+
 2 backup methods: on-demand and PITR, they copy the table to s3 but you do NOT have access to the s3 bucket.
 
 DynamoDB uses **eventually consistent reads** by default. Read operations (such as GetItem, Query, and Scan) provide a `ConsistentRead` parameter to read the most recent value.
@@ -309,6 +366,24 @@ With a `BatchWriteItem` operation, it is possible that **only some of the action
 
 **adaptive capacity**:
 ![adaptive capacity](adaptive.jpg)
+
+![gsi](gsi.jpg)
+
+## ElastiCache
+
+All the nodes in a Redis cluster must reside in the same region
+
+While using Redis with cluster mode enabled, there are some limitations:
+
+1. You cannot manually promote any of the replica nodes to primary.
+2. Multi-AZ is required.
+3. You can only change the structure of a cluster, the node type, and the number of nodes by restoring from a backup.
+
+When you add a read replica to a cluster, all of the data from the primary is copied to the new node. From that point on, whenever data is written to the primary, the changes are **asynchronously propagated** to all the read replicas, for both the **Redis** offerings (cluster mode enabled or cluster mode disabled)
+
+Redis-compatible in-memory data structure service that can be used as a data store or cache. In addition to strings, **Redis** supports lists, sets, sorted sets, hashes, bit arrays, and hyperlog logs. Applications can use these more advanced data structures to support a variety of use cases. For example, you can use Redis Sorted Sets to easily implement a game leaderboard that keeps a list of players sorted by their rank.
+
+**Cluster Mode** also allows for more flexibility when designing new workloads with unknown storage requirements or heavy write activity. In a read-heavy workload, one can scale a single shard by adding read replicas, up to five, but a write-heavy workload can benefit from additional write endpoints when cluster mode is enabled
 
 ## RDS
 IAM authorization: Available for **MySQL, PostGres and MariaDB**
@@ -330,6 +405,15 @@ A **Zonal Reserved Instance** provides a capacity reservation in the specified A
 **Regional Reserved Instance** does not provide capacity reservation.
 
 **Detailed Monitoring** you define the frequency at which the metric data has to be sent to CloudWatch, from 5 minutes to 1-minute frequency window.
+
+List of **ephemeral port ranges**:
+- Many Linux kernels (including the Amazon Linux kernel) use ports 32768-61000.
+- Requests originating from Elastic Load Balancing use ports 1024-65535.
+- Windows operating systems through Windows Server 2003 use ports 1025-5000.
+- Windows Server 2008 and later versions use ports 49152-65535.
+- A NAT gateway uses ports 1024-65535.
+- AWS Lambda functions use ports 1024-65535.
+
 ## Cloudformation
 `Fn::FindInMap` returns the value corresponding to keys in a two-level map. Map of all the possible values for the base AMI: `!FindInMap [ MapName, TopLevelKey, SecondLevelKey ]`
 
@@ -351,6 +435,14 @@ List<AWS::EC2::Subnet::Id> – An array of subnet IDs
 
 `AllowedValues` -> CommaDelimitedList
 
+To share information between stacks, export a stack's output values. Other stacks that are in the **same** AWS account and region can import the exported values.
+
+To export a stack's output value, use the Export field in the Output section of the stack's template. To import those values, use the **Fn::ImportValue** function in the template for the other stacks.
+
+`cloudformation package` command packages the local artifacts (local paths) that your AWS CloudFormation template references. The command will upload local artifacts, such as your source code for your AWS Lambda function.
+
+`cloudformation deploy` command deploys the specified AWS CloudFormation template by creating and then executing a changeset
+
 ## SAM
 
 SAM supports the following resource types:
@@ -362,12 +454,10 @@ SAM supports the following resource types:
 - AWS::Serverless::SimpleTable
 - AWS::Serverless::StateMachine
 
-## CodeCommit
-Credential types:
-- SSH Keys
-- Git credentials
-- AWS Access keys
-
 ## X-Ray
 To ensure efficient tracing and provide a representative sample of the requests that your application serves, the X-Ray SDK applies a sampling algorithm to determine which requests get traced. By default, the X-Ray SDK records the first request each second, and five percent of any additional requests. X-Ray sampling is enabled directly from the AWS console, hence your application code does not need to change.
 
+## CloudTrail
+The bucket owner also needs to be object owner to get the object access logs:
+
+If the bucket owner is also the object owner, the bucket owner gets the object access logs. Otherwise, the bucket owner must get permissions, through the object ACL, for the same object API to get the same object-access API logs.
