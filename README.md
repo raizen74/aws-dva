@@ -35,9 +35,14 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [SAM](#sam)
 - [X-Ray](#x-ray)
 - [CloudTrail](#cloudtrail)
+- [Macie](#macie)
 
 ## CLI
 - --dry-run: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
+
+`--page-size` - You can use the --page-size option to specify that the AWS CLI requests a smaller number of items from each call to the AWS service. The CLI still retrieves the full list but performs a larger number of service API calls in the background and retrieves a smaller number of items with each call.
+
+Make few API calls -> `--max-items` and `--starting-token`
 
 ## EBS
 - gp2: minimum of 100 IOPS (at 33.33 GiB and below) and a maximum of 16,000 IOPS (at 5,334 GiB and above)
@@ -45,9 +50,11 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - io1 4-16 GiB, 100-64k(Nitro) IOPS, ratio IOPS/GB <= 50:1
 
 ## S3
-Server Side Encryption does NOT encrypt object metadata.
+SSE-KMS does NOT encrypt object metadata.
 
-**S3 Analytics**: Analyze storage access patterns to help you decide when to transition the right data to the right storage class
+**Inventory** You can use it to audit and report on the **replication and encryption** status of your objects for business, compliance, and regulatory needs
+
+**S3 Analytics**: Analyze **storage access patterns** to help you decide when to transition the right data to the right storage class
 
 **Replication**
 - Replicated objects RETAIN metadata
@@ -96,6 +103,11 @@ Route based on content-type, path pattern and more e.g. /api/* route to an ALB, 
 - Do failover, increase HA. 1 primary origin and 1 secondary origin
 - Failover EC2s, s3 buckets etc
 
+**Cache Behaviour**
+- Order matters, upper cache-behaviour listings are evaluated first.
+- You must create at least as many cache behaviors (including the default cache behavior) as you have origins if you want CloudFront to serve objects from all of the origins. Each cache behavior specifies the one origin from which you want CloudFront to get objects. If you have two origins and only the default cache behavior, the default cache behavior will cause CloudFront to get objects from one of the origins, but the other origin is never used.
+- The path pattern for the default cache behavior is * and cannot be changed. If the request for an object does not match the path pattern for any cache behaviors, CloudFront applies the behavior in the default cache behavior.
+
 **Field level encryption**
 
 Encrypt at the edge location, uses asymmetric encryption, specify up to 10 fields in a POST request and the **public key** to encrypt them (at the edge). Fields will be decrypted in the backend e.g. (EC2) using a **private key**
@@ -128,10 +140,15 @@ If you terminate a container instance in the **RUNNING** state, that container i
 
 If you terminate a container instance while it is in the **STOPPED** state, that container instance isn't automatically removed from the cluster. You will **need to deregister your container instance** in the STOPPED state by using the Amazon ECS console or AWS Command Line Interface.
 
+`aws ecs create-service --service-name ecs-simple-service --task-definition ecs-demo --desired-count 10`
+To create a new service you would use this command which creates a service in your default region called ecs-simple-service. The service uses the ecs-demo task definition and it maintains 10 instantiations of that task.
+
 ## SNS
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
 ## SQS
+**MessageDeduplicationId**: The message deduplication ID is the token used for the deduplication of sent messages. If a message with a particular message deduplication ID is sent successfully, any messages sent with the same message deduplication ID are accepted successfully but aren't delivered during the 5-minute deduplication interval.
+
 **FIFO queues not allowed** for s3 event notification destination.
 
 Visibility timeout 0-12 hours, default to 30 seconds.
@@ -155,6 +172,7 @@ To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKe
 
 **Envelope encryption** reduces the network load since only the request and delivery of the much smaller **data key** go over the network. The data key is used locally in your application or encrypting AWS service, avoiding the need to send the entire block of data to AWS KMS and suffer network latency.
 
+![kms](kms.jpg)
 
 ## Parameter store
 `SecureString` are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of `SecureString` parameters, 1 API call per decryption.
@@ -252,6 +270,8 @@ After you disable an Availability Zone, the targets in that Availability Zone re
 
 **Request tracing**: track HTTP requests. The load balancer adds a header with a trace identifier to each request it receives. Request tracing will not help you to analyze latency specific data.
 
+![alb](alb.jpg)
+
 ## Auto Scaling
 Target Tracking Scaling policy metrics:
 - ALBRequestCountPerTarget
@@ -261,9 +281,15 @@ Target Tracking Scaling policy metrics:
 ## Beanstalk
 You can deploy any version of your application to any environment. Environments can be long-running or temporary. When you terminate an environment, **you can save its configuration** to recreate it later.
 
-`.ebextensions/<mysettings>.config` : You can add AWS Elastic Beanstalk configuration files (`.ebextensions`) to your web application's source code to configure your environment and customize the AWS resources that it contains. `.ebextensions` must be placed at the **root** of the source code, `option_settings` section of a configuration file defines values for configuration options (Elastic Beanstalk environment, the AWS resources in it, and the software that runs your application).
+`.ebextensions/<mysettings>.config` : You can add AWS Elastic Beanstalk configuration files (`.ebextensions`) to your web application's source code to configure your environment and customize the AWS resources that it contains. This **does not help with managing versions**. `.ebextensions` must be placed at the **root** of the source code, `option_settings` section of a configuration file defines values for configuration options (Elastic Beanstalk environment, the AWS resources in it, and the software that runs your application).
 
 Any resources created as part of your `.ebextensions` is part of your Elastic Beanstalk template and **will get deleted if the environment is terminated**
+
+To configure HTTPS for an ALB via `.ebextensions` -> To update your AWS Elastic Beanstalk environment to use HTTPS, you need to configure an HTTPS listener for the load balancer in your environment. Two types of load balancers support an HTTPS listener: Classic Load Balancer and Application Load Balancer. ALB to backend use HTTP.
+
+**lifecycle policy** for versions:
+
+![lifecycle](lifecycle.jpg)
 
 **Failed deployment**: Elastic Beanstalk will replace the failed instances with instances running the application version from the most recent successful deployment
 
@@ -281,7 +307,19 @@ Any resources created as part of your `.ebextensions` is part of your Elastic Be
 
 ![deployments.jpg](deployments.jpg)
 
+![beanstalk.jpg](beanstalk.jpg)
+
+![worker.jpg](worker.jpg)
+
 ## Cloudwatch logs
+The **CloudWatch agent** enables you to do the following:
+
+Collect system-level metrics from on-premises servers. These can include servers in a hybrid environment as well as servers not managed by AWS.
+
+Collect logs from Amazon EC2 instances and on-premises servers, running either Linux or Windows Server.
+
+To enable the CloudWatch agent to send data from an on-premises server, you must specify the access key and secret key of the IAM user that you created earlier.
+
 You can export from multiple **log groups** or multiple **time ranges** to **s3 bucket**
 
 Log group data is **always encrypted** in CloudWatch Logs. You can optionally use AWS AWS Key Management Service for this encryption. If you do, the encryption is done using an AWS KMS (AWS KMS) customer master key (CMK). Encryption using AWS KMS is enabled at the log group level, by associating a CMK with a log group, either when you create the log group or after it exists.
@@ -313,6 +351,7 @@ INSUFFICIENT_DATA – The alarm has just started, the metric is not available, o
 An alarm watches a single metric over a specified time, and performs one or more specified actions, based on the value of the metric relative to a threshold over time. The action is a notification sent to an Amazon SNS topic or an Auto Scaling policy. You can also add alarms to dashboards.
 
 ## Lambda
+`/tmp` is 512MB of temporary space
 
 ENV variables can have a maximum size of **4 KB**
 
@@ -324,7 +363,7 @@ Lambda does not support functions that use **multi-architecture container images
 
 Image max size: 10 GB
 
-To increase **provisioned concurrency** automatically as needed, use the Application Auto Scaling API to register a target and create a scaling policy. By allocating provisioned concurrency before an increase in invocations, you can ensure that all requests are served by **initialized instances** with very low latency.
+To increase **provisioned concurrency** automatically as needed, use the Application Auto Scaling API to register a target and create a scaling policy. By allocating provisioned concurrency before an increase in invocations, you can ensure that all requests are served by **initialized instances** with very low latency. Provisioned Concurrency **cannot be used with the $LATEST version**. This feature can only be used with **published versions and aliases** of a function.
 
 ## Step functions
 A Task state (`"Type": "Task"`) represents a single unit of work performed by a state machine.
@@ -385,6 +424,10 @@ Redis-compatible in-memory data structure service that can be used as a data sto
 
 **Cluster Mode** also allows for more flexibility when designing new workloads with unknown storage requirements or heavy write activity. In a read-heavy workload, one can scale a single shard by adding read replicas, up to five, but a write-heavy workload can benefit from additional write endpoints when cluster mode is enabled
 
+![lazy](lazy.jpg)
+
+![write](write.jpg)
+
 ## RDS
 IAM authorization: Available for **MySQL, PostGres and MariaDB**
 
@@ -396,8 +439,12 @@ You can enable **storage autoscaling** and set the max storage limit, triggers:
 Automated backups (0-35 days retention) are Region bound while manual snapshots and Read Replicas are supported across multiple Regions.
 
 ## EC2
+Query the metadata at http://169.254.169.254/latest/meta-data. local IP address
+
+Query the user data at http://169.254.169.254/latest/user-data - This address retrieves the user data that you specified when launching your instance.
+
 Change `DeleteOnTermination` default=True for the root volume, and default=False for the rest of the volumes:
-- When the instance is running can only be changed via CLI
+- When the instance is running **can only be changed via CLI**
 - From the console can only be set when you launch a new instance 
 
 A **Zonal Reserved Instance** provides a capacity reservation in the specified Availability Zone. Capacity Reservations enable you to reserve capacity for your Amazon EC2 instances in a specific Availability Zone for any duration
@@ -443,6 +490,8 @@ To export a stack's output value, use the Export field in the Output section of 
 
 `cloudformation deploy` command deploys the specified AWS CloudFormation template by creating and then executing a changeset
 
+You can upload all the code as a **zip to S3** and refer the object in `AWS::Lambda::Function` block.
+
 ## SAM
 
 SAM supports the following resource types:
@@ -454,10 +503,32 @@ SAM supports the following resource types:
 - AWS::Serverless::SimpleTable
 - AWS::Serverless::StateMachine
 
+![SAM](sam.jpg)
+
 ## X-Ray
-To ensure efficient tracing and provide a representative sample of the requests that your application serves, the X-Ray SDK applies a sampling algorithm to determine which requests get traced. By default, the X-Ray SDK records the first request each second, and five percent of any additional requests. X-Ray sampling is enabled directly from the AWS console, hence your application code does not need to change.
+To ensure efficient tracing and provide a representative sample of the requests that your application serves, the X-Ray SDK applies a sampling algorithm to determine which requests get traced. By default, the **X-Ray SDK records the first request each second, and five percent of any additional requests**. X-Ray sampling is enabled directly from the AWS console, hence your application code does not need to change.
+
+You can use X-Ray to collect data across AWS Accounts. The **X-Ray agent can assume a role to publish data into an account different from the one in which it is running**. This enables you to publish data from various components of your application into a central account.
+
+You can use X-Ray to track requests from applications or services spread across **multiple Regions**.
+
+**Index** your XRay traces to search and filter: **Annotations** are simple key-value pairs that are indexed for use with filter expressions. Use annotations to record data that you want to use to group traces in the console, or when calling the GetTraceSummaries API.
+
+X-Ray indexes up to 50 annotations per trace.
+
+**Metadata** are key-value pairs with values of any type, including objects and lists, but that is not indexed. Use metadata to record data you want to store in the trace but don't need to use for searching traces.
+
+A **Segment** provides the resource's name, details about the request, and details about the work done.
+
+In ECS deploy X-Ray daemon agent as a **sidecar container** and provide the correct **IAM task role** to the X-Ray container. `AWS_XRAY_DAEMON_ADDRESS` By default, the SDK uses 127.0.0.1:2000 for both trace data (UDP) and sampling (TCP).
+
+![xray](xray.jpg)
 
 ## CloudTrail
 The bucket owner also needs to be object owner to get the object access logs:
 
 If the bucket owner is also the object owner, the bucket owner gets the object access logs. Otherwise, the bucket owner must get permissions, through the object ACL, for the same object API to get the same object-access API logs.
+
+## Macie
+
+![macie](macie.jpg)
