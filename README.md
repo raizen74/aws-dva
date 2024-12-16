@@ -13,7 +13,7 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [KMS](#kms)
 - [Parameter store](#parameter-store)
 - [Secrets Manager](#secrets-manager)
-- [Kinesis](#kinesis)
+- [Kinesis data streams](#kinesis-data-streams)
 - [CodeCommit](#codecommit)
 - [CodeBuild](#codebuild)
 - [CodeDeploy](#codedeploy)
@@ -36,9 +36,10 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [X-Ray](#x-ray)
 - [CloudTrail](#cloudtrail)
 - [Macie](#macie)
+- [ECR](#ecr)
 
 ## CLI
-- --dry-run: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
+`--dry-run`: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
 
 `--page-size` - You can use the --page-size option to specify that the AWS CLI requests a smaller number of items from each call to the AWS service. The CLI still retrieves the full list but performs a larger number of service API calls in the background and retrieves a smaller number of items with each call.
 
@@ -49,12 +50,19 @@ Make few API calls -> `--max-items` and `--starting-token`
 
 - io1 4-16 GiB, 100-64k(Nitro) IOPS, ratio IOPS/GB <= 50:1
 
+To encrypt an unencrypted EBS, you **must create a copy**.
+
+You can configure your AWS account to enforce the encryption of the new EBS volumes and snapshot copies that you create. **Encryption by default is a Region-specific setting**. If you enable it for a Region, you cannot disable it for individual volumes or snapshots in that Region.
 ## S3
-SSE-KMS does NOT encrypt object metadata.
+**SSE-KMS does NOT encrypt object metadata**.
 
-**Inventory** You can use it to audit and report on the **replication and encryption** status of your objects for business, compliance, and regulatory needs
+If two writes are made to a single **non-versioned object** at the same time, it is possible that only a single **event notification** will be sent. If you want to **ensure** that an event notification is sent for every successful write, you should **enable versioning on your bucket**. With versioning, every successful write will create a new version of your object and will also send event notification.
 
-**S3 Analytics**: Analyze **storage access patterns** to help you decide when to transition the right data to the right storage class
+S3 also provides **strong consistency for list operations**, so after a write, you can immediately perform a listing of the objects in a bucket with any changes reflected.
+
+S3 delivers strong read-after-write consistency, helps when you need to immediately read an object after a write.
+
+If you delete a bucket and immediately list all buckets, **the deleted bucket might still appear in the list** - Bucket configurations have an **eventual consistency** model.
 
 **Replication**
 - Replicated objects RETAIN metadata
@@ -67,11 +75,15 @@ SSE-KMS does NOT encrypt object metadata.
 
 **S3 Object Ownership** has two settings: 1. Object writer – The uploading account will own the object. 2. Bucket owner preferred – The bucket owner will own the object if the object is uploaded with the bucket-owner-full-control canned ACL. Without this setting and canned ACL, the object is uploaded and remains owned by the uploading account.
 
-**Access Analyzer for S3** helps review all buckets that have bucket access control lists (ACLs), bucket policies, or access point policies that grant public or shared access. Access Analyzer for S3 alerts you to buckets that are configured to allow access to anyone on the internet or other AWS accounts, including AWS accounts outside of your organization.
+**Inventory** You can use it to audit and report on the **replication and encryption** status of your objects for business, compliance, and regulatory needs
+
+**S3 Analytics**: Analyze **storage access patterns** to help you decide when to transition the right data to the right storage class
 
 ## IAM
 **Access Analyzer**: You can set the scope for the analyzer to an **organization or an AWS account**. Identify unintended access to your resources and data, which is a security risk. Helps inspecting unused access to guide you toward least privilege.
 When the **unused access analyzer is enabled**, IAM Access Analyzer continuously analyzes your accounts to identify unused access and creates a centralized dashboard with findings. The findings highlight unused roles, unused access keys for IAM users, and unused passwords for IAM users. 
+
+**Access Analyzer for S3** helps review all buckets that have bucket access control lists (ACLs), bucket policies, or access point policies that grant public or shared access. Access Analyzer for S3 alerts you to buckets that are configured to allow access to anyone on the internet or other AWS accounts, including AWS accounts outside of your organization.
 
 ## Amazon Inspector
 Amazon Inspector is an automated security assessment service that helps improve the **security and compliance** of applications deployed on AWS. Amazon Inspector automatically assesses applications for exposure, vulnerabilities, and deviations from best practices.
@@ -82,6 +94,17 @@ AWS Trusted Advisor is an online tool that provides you real-time guidance to he
 ## Cloudfront
 Client - Cloudfront (HTTPS), Cloudfront - Backend/origin (HTTPS)
 Origin protocol policy: **HTTPS Only** or **Match Viewer** (same proto as the viewer)
+
+You cannot directly integrate Cognito User Pools with CloudFront distribution as you have to create a separate Lambda@Edge function to accomplish the authentication via Cognito User Pools.
+
+**Cloudfront functions**: When a viewer request to CloudFront results in a cache miss (the requested object is not cached at the edge location), CloudFront sends a request to the origin to retrieve the object. This is called an origin request. The origin request always includes the following information from the viewer request:
+- The URL path (the path only, without URL query strings or the domain name)
+- The request body (if there is one)
+- The HTTP headers that CloudFront automatically includes in every origin request, including Host, User-Agent, and X-Amz-Cf-Id **CloudFront-Viewer-Country** header.
+
+![cloudfront-func](cloudfront-func.jpg)
+
+![lambda-edge](lambda-edge.jpg)
 
 **Signed URL** is generated by our application with SDK, give access to 1 file. Give access to a **path**, no matter the origin (work for more than s3 origins). They are key-pairs, only root account can manage them. Can **filter by IP, path, date, expiration**. Can leverage caching features. 2 types of signers used to **sign URLS and cookies**:
 1. **trusted key group** (recommended), can rotate keys. Generate public/key pair, private key is used by services to generate the URL and public key is used by Cloudfront to verify the URL, you can associate a high number of public keys with your CloudFront distribution. The public key can be regenerated from the private key. You create a **key group** and add up to 5 public keys, this group is what cloudfront references to allow EC2 (for example) to create signed URLs.
@@ -102,19 +125,19 @@ Route based on content-type, path pattern and more e.g. /api/* route to an ALB, 
 **Origin groups**
 - Do failover, increase HA. 1 primary origin and 1 secondary origin
 - Failover EC2s, s3 buckets etc
+- CloudFront routes all incoming requests to the primary origin, even when a previous request failed over to the secondary origin
+- CloudFront fails over to the secondary origin only when the HTTP method of the viewer request is GET, HEAD or OPTIONS. CloudFront **does not failover** when the viewer sends a different HTTP method (for example POST, PUT, and so on).
 
 **Cache Behaviour**
 - Order matters, upper cache-behaviour listings are evaluated first.
 - You must create at least as many cache behaviors (including the default cache behavior) as you have origins if you want CloudFront to serve objects from all of the origins. Each cache behavior specifies the one origin from which you want CloudFront to get objects. If you have two origins and only the default cache behavior, the default cache behavior will cause CloudFront to get objects from one of the origins, but the other origin is never used.
 - The path pattern for the default cache behavior is * and cannot be changed. If the request for an object does not match the path pattern for any cache behaviors, CloudFront applies the behavior in the default cache behavior.
 
-**Field level encryption**
+**Field level encryption**: Encrypt at the edge location, uses asymmetric encryption, specify up to 10 fields in a POST request and the **public key** to encrypt them (at the edge). Fields will be decrypted in the backend e.g. (EC2) using a **private key**
 
-Encrypt at the edge location, uses asymmetric encryption, specify up to 10 fields in a POST request and the **public key** to encrypt them (at the edge). Fields will be decrypted in the backend e.g. (EC2) using a **private key**
+**Real time logs**: All cloudfront real-time requests can be send to **Kinesis Data Streams**. You can use it in a % of requests or for specific fields or cache behaviours (paths)
 
-**Real time logs**
 
-All cloudfront real-time requests can be send to **Kinesis Data Streams**. You can use it in a % of requests or for specific fields or cache behaviours (paths)
 
 ## CDK
 Workflow:
@@ -143,6 +166,8 @@ If you terminate a container instance while it is in the **STOPPED** state, that
 `aws ecs create-service --service-name ecs-simple-service --task-definition ecs-demo --desired-count 10`
 To create a new service you would use this command which creates a service in your default region called ecs-simple-service. The service uses the ecs-demo task definition and it maintains 10 instantiations of that task.
 
+Central logs in Fargate: Using the `awslogs log driver` you can configure the containers in your tasks to send log information to CloudWatch Logs. If you're using the Fargate launch type for your tasks, you need to add the required logConfiguration parameters to your task definition to turn on the awslogs log driver.
+If you're using the **EC2 launch type (and not Fargate)** for your tasks and want to turn on the awslogs log driver, your Amazon ECS container instances require at least **version 1.9.0 of the container agent**.
 ## SNS
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
@@ -165,6 +190,8 @@ Max message size -> **256 KB**. To manage large messages, you can use Amazon S3 
 
 Delay queues time range - 0 sec, 15 min
 
+The **default message retention period** is 4 days (60s - 14 days). `SetQueueAttributes` action.
+
 ## KMS
 Support sending data up to **4 KB** to be encrypted directly.
 
@@ -183,8 +210,9 @@ Parameter Store supports parameter policies that are available for parameters th
 ## Secrets Manager
 You can attach **resource-based** policies to a **secret**, to allow Principals e.g. IAM **Roles**, **Users**, other AWS **accounts**... to access them.
 
-## Kinesis
-Limits can be exceeded by either data throughput or the number of PUT records. While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
+## Kinesis data streams
+
+Limits can be exceeded by either data throughput (1MB/s per shard) or the number of PUT records (1000 puts/s). While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
 
 The `Amazon Kinesis Client Library (KCL)` delivers all records for a given partition key to the same record processor
 
@@ -207,6 +235,8 @@ Credential types:
 Migrate GitHub repos to CodeCommit -> Git credentials generated from IAM
 
 ## CodeBuild
+`buildspec.yml` in the root directory.
+
 `CODEBUILD_KMS_KEY_ID` The identifier of the AWS KMS key that CodeBuild is using to encrypt the build output artifact (for example, `arn:aws:kms:region-ID:account-ID:key/key-ID` or alias/key-alias).
 
 A typical application build process includes phases like preparing the environment, updating the configuration, downloading dependencies, running unit tests, and finally, packaging the built artifact. CodeBuild can upload artifacts to s3, attach an IAM role with s3 permissions.
@@ -219,6 +249,13 @@ Can push metrics to Cloudwatch, scope: Project level or AWS account level. These
 
 CodeBuild scales automatically to meet peak build requests.
 
+**Debug Codebuild**: Run AWS CodeBuild **locally** using CodeBuild Agent. With the Local Build support for AWS CodeBuild, you just specify the location of your source code, choose your build settings, and CodeBuild runs build scripts for compiling, testing, and packaging your code.
+- Test the integrity and contents of a buildspec file locally.
+- Test and build an application locally before committing
+- Identify and fix errors quickly from your local development environment.
+
+It is **not possible to SSH into the CodeBuild Docker container**, that's why you should test and fix errors locally.
+
 ## CodeDeploy
 `appspec.yml` for specifying **deployment hooks**. An EC2/On-Premises deployment hook is executed once per deployment to an instance. You can specify one or more scripts to run in a hook. Some hooks:
 - **ValidateService** is the last deployment lifecycle event. It is used to verify the deployment was completed successfully.
@@ -230,7 +267,7 @@ CodeBuild scales automatically to meet peak build requests.
 
 ![hooks-v2](hooksv2.jpg)
 
-The AppSpec file is used to:
+The **AppSpec file** is used to:
 - Map the source files in your application revision to their destinations on the instance.
 - Specify custom permissions for deployed files.
 - Specify scripts to be run on each instance at various stages of the deployment process.
@@ -250,6 +287,10 @@ During deployment, the **CodeDeploy agent** looks up the name of the current eve
 **CodeDeploy agent** is a software package that, when installed and configured on an instance, makes it possible for that instance to be used in CodeDeploy deployments. The CodeDeploy agent archives revisions and log files on instances. The CodeDeploy agent cleans up these artifacts to conserve disk space. You can use the `:max_revisions:` option in the agent configuration file to specify the number of application revisions to the archive by entering any positive integer. CodeDeploy also archives the log files for those revisions. All others are deleted, except for the log file of the last successful deployment
 
 CodeDeploy **rolls back deployments** by redeploying a previously deployed revision of an application as a new deployment. These rolled-back deployments are technically new deployments, with new deployment IDs, rather than restored versions of a previous deployment.
+
+**CodeDeploy Deployment Groups**: You can specify one or more deployment groups for a CodeDeploy application. The deployment group contains settings and configurations used during the deployment. Most deployment group settings depend on the compute platform used by your application. Some settings, such as rollbacks, triggers, and alarms can be configured for deployment groups for any compute platform.
+
+In an EC2/On-Premises deployment, a deployment group is a set of individual instances targeted for deployment. A deployment group contains individually tagged instances, Amazon EC2 instances in Amazon EC2 Auto Scaling groups, or both.
 
 ## CodePipeline
 You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. Approval actions can't be added to Source stages. Source stages can contain only source actions.
@@ -272,6 +313,12 @@ After you disable an Availability Zone, the targets in that Availability Zone re
 
 ![alb](alb.jpg)
 
+**statusCodes**:
+- HTTP 403 - HTTP 403 is 'Forbidden' error. You configured an AWS WAF web access control list (web ACL) to monitor requests to your Application Load Balancer and it blocked a request.
+- HTTP 500 - HTTP 500 indicates 'Internal server' error. There are several reasons for their error: A client submitted a request without an HTTP protocol, and the load balancer was unable to generate a redirect URL, there was an error executing the web ACL rules.
+- HTTP 503 - HTTP 503 indicates 'Service unavailable' error. This error in ALB is an indicator of the target groups for the load balancer having no registered targets.
+- HTTP 504 - HTTP 504 is 'Gateway timeout' error. Several reasons for this error, to quote a few: The load balancer failed to establish a connection to the target before the connection timeout expired, The load balancer established a connection to the target but the target did not respond before the idle timeout period elapsed.
+
 ## Auto Scaling
 Target Tracking Scaling policy metrics:
 - ALBRequestCountPerTarget
@@ -279,13 +326,15 @@ Target Tracking Scaling policy metrics:
 - ASGAverageNetworkOut - Average number of bytes sent out on all network interfaces by the Auto Scaling group
 
 ## Beanstalk
+Migrate a beanstalk environment from account A to account B: You must use saved configurations to migrate an Elastic Beanstalk environment between AWS accounts. You can save your environment's configuration as an object in Amazon Simple Storage Service (Amazon S3) that can be applied to other environments during environment creation, or applied to a running environment. Saved configurations are YAML formatted templates that define an environment's platform version, tier, configuration option settings, and tags. Create a saved configuration in Team A's account and download it to your local machine. Make the account-specific parameter changes and upload to the S3 bucket in Team B's account. From Elastic Beanstalk console, create an application from 'Saved Configurations'
+
 You can deploy any version of your application to any environment. Environments can be long-running or temporary. When you terminate an environment, **you can save its configuration** to recreate it later.
 
 `.ebextensions/<mysettings>.config` : You can add AWS Elastic Beanstalk configuration files (`.ebextensions`) to your web application's source code to configure your environment and customize the AWS resources that it contains. This **does not help with managing versions**. `.ebextensions` must be placed at the **root** of the source code, `option_settings` section of a configuration file defines values for configuration options (Elastic Beanstalk environment, the AWS resources in it, and the software that runs your application).
 
 Any resources created as part of your `.ebextensions` is part of your Elastic Beanstalk template and **will get deleted if the environment is terminated**
 
-To configure HTTPS for an ALB via `.ebextensions` -> To update your AWS Elastic Beanstalk environment to use HTTPS, you need to configure an HTTPS listener for the load balancer in your environment. Two types of load balancers support an HTTPS listener: Classic Load Balancer and Application Load Balancer. ALB to backend use HTTP.
+Configure HTTPS for an ALB via `.ebextensions` -> To update your AWS Elastic Beanstalk environment to use HTTPS, you need to configure an HTTPS listener for the load balancer in your environment. Two types of load balancers support an HTTPS listener: Classic Load Balancer and Application Load Balancer. ALB to backend use HTTP.
 
 **lifecycle policy** for versions:
 
@@ -313,12 +362,9 @@ To configure HTTPS for an ALB via `.ebextensions` -> To update your AWS Elastic 
 
 ## Cloudwatch logs
 The **CloudWatch agent** enables you to do the following:
-
-Collect system-level metrics from on-premises servers. These can include servers in a hybrid environment as well as servers not managed by AWS.
-
-Collect logs from Amazon EC2 instances and on-premises servers, running either Linux or Windows Server.
-
-To enable the CloudWatch agent to send data from an on-premises server, you must specify the access key and secret key of the IAM user that you created earlier.
+- Collect system-level metrics from on-premises servers. These can include servers in a hybrid environment as well as servers not managed by AWS.
+- Collect logs from Amazon EC2 instances and on-premises servers, running either Linux or Windows Server.
+- To enable the CloudWatch agent to send data from an on-premises server, you must specify the access key and secret key of the IAM user that you created earlier.
 
 You can export from multiple **log groups** or multiple **time ranges** to **s3 bucket**
 
@@ -341,12 +387,9 @@ Data points with a period of less than 60 seconds are available for 3 hours. The
 
 ## CloudWatch Alarms
 A metric alarm has the following possible states:
-
-OK – The metric or expression is within the defined threshold.
-
-ALARM – The metric or expression is outside of the defined threshold.
-
-INSUFFICIENT_DATA – The alarm has just started, the metric is not available, or not enough data is available for the metric to determine the alarm state.
+- OK – The metric or expression is within the defined threshold.
+- ALARM – The metric or expression is outside of the defined threshold.
+- INSUFFICIENT_DATA – The alarm has just started, the metric is not available, or not enough data is available for the metric to determine the alarm state.
 
 An alarm watches a single metric over a specified time, and performs one or more specified actions, based on the value of the metric relative to a threshold over time. The action is a notification sent to an Amazon SNS topic or an Auto Scaling policy. You can also add alarms to dashboards.
 
@@ -380,11 +423,21 @@ A Task state (`"Type": "Task"`) represents a single unit of work performed by a 
 Express Workflows have a maximum duration of five minutes and Standard workflows have a maximum duration of one year.
 
 ## API Gateway
+A **stage** is a named reference to a deployment, which is a snapshot of the API. You use a stage to manage and optimize a particular deployment. For example, you can configure stage settings to enable caching, customize request throttling, configure logging, define stage variables, or attach a canary release for testing.
+
 **Promote a stage**: The promotion can be done by redeploying the API to the prod stage OR updating a stage variable value from the stage name of test to that of prod.
 
 **Lambda authorizer**: Lambda authorizer uses bearer token authentication strategies, such as OAuth or SAML. You must first create the AWS Lambda function that implements the logic to authorize and, if necessary, to authenticate the caller.
 
- The default TTL value for API caching is 300 seconds. The maximum TTL value is 3600 seconds. TTL=0 means caching is disabled.
+![lambda-auth](lambdas.jpg)
+
+The default TTL value for API caching is 300 seconds. The maximum TTL value is 3600 seconds. TTL=0 means caching is disabled.
+
+API Gateway calls **AWS Security Token Service** (STS) to assume the IAM role, so make sure that AWS STS is enabled for the Region.
+
+Access logging -> Only $context variables are supported (not $input, and so on).
+
+Your account is charged for accessing method-level CloudWatch metrics, but not the API-level or stage-level metrics.
 
 ## DynamoDB
 DynamoDB streams -> item level log for up to 24 hours.
@@ -407,6 +460,9 @@ With a `BatchWriteItem` operation, it is possible that **only some of the action
 ![adaptive capacity](adaptive.jpg)
 
 ![gsi](gsi.jpg)
+
+If your application doesn't require strongly consistent reads, consider using **eventually consistent reads**. Eventually consistent reads are cheaper and are **less likely to experience high latency**.
+**DynamoDB Global Tables**: you can specify the AWS Regions where you want the table to be available. This can significantly reduce latency for your users. So, reducing the distance between the client and the DynamoDB endpoint is an important performance fix to be considered.
 
 ## ElastiCache
 
@@ -525,10 +581,16 @@ In ECS deploy X-Ray daemon agent as a **sidecar container** and provide the corr
 ![xray](xray.jpg)
 
 ## CloudTrail
-The bucket owner also needs to be object owner to get the object access logs:
+S3 bucket owner also needs to be object owner to get the **object access logs**.
 
 If the bucket owner is also the object owner, the bucket owner gets the object access logs. Otherwise, the bucket owner must get permissions, through the object ACL, for the same object API to get the same object-access API logs.
 
 ## Macie
 
 ![macie](macie.jpg)
+
+## ECR
+
+`$(aws ecr get-login --no-include-email)` The get-login command retrieves a token that is valid for a specified registry for 12 hours, and then it prints a docker login command with that authorization token.
+
+`docker pull 1234567890.dkr.ecr.eu-west-1.amazonaws.com/demo:latest`
