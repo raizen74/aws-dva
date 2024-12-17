@@ -37,8 +37,13 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [CloudTrail](#cloudtrail)
 - [Macie](#macie)
 - [ECR](#ecr)
+- [Athena](#athena)
 
 ## CLI
+`put-metric-data` command publishes metric data points to Amazon CloudWatch
+
+`put-metric-alarm` creates or updates an alarm and associates it with the specified metric, metric math expression, or anomaly detection model.
+
 `--dry-run`: checks whether you have the required permissions for the action, without actually making the request, and provides an error response. If you have the **required permissions**, the error response is `DryRunOperation`, otherwise, it is `UnauthorizedOperation`
 
 `--page-size` - You can use the --page-size option to specify that the AWS CLI requests a smaller number of items from each call to the AWS service. The CLI still retrieves the full list but performs a larger number of service API calls in the background and retrieves a smaller number of items with each call.
@@ -167,7 +172,14 @@ If you terminate a container instance while it is in the **STOPPED** state, that
 To create a new service you would use this command which creates a service in your default region called ecs-simple-service. The service uses the ecs-demo task definition and it maintains 10 instantiations of that task.
 
 Central logs in Fargate: Using the `awslogs log driver` you can configure the containers in your tasks to send log information to CloudWatch Logs. If you're using the Fargate launch type for your tasks, you need to add the required logConfiguration parameters to your task definition to turn on the awslogs log driver.
+
 If you're using the **EC2 launch type (and not Fargate)** for your tasks and want to turn on the awslogs log driver, your Amazon ECS container instances require at least **version 1.9.0 of the container agent**.
+
+Task placement strategies can be specified when either running a task or creating a new service:
+- **binpack** - Place tasks based on the least available amount of CPU or memory. This minimizes the number of instances in use.
+- **random** - Place tasks randomly.
+- **spread** - Place tasks evenly based on the specified value. Accepted values are instanceId (or host, which has the same effect) (instanceId -> distributes tasks evenly across the instances), or any platform or custom attribute that is applied to a container instance, such as `attribute:ecs.availability-zone`. Service tasks are spread based on the tasks from that service. Standalone tasks are spread based on the tasks from the same task group.
+
 ## SNS
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
@@ -201,6 +213,10 @@ To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKe
 
 ![kms](kms.jpg)
 
+`GenerateDataKey` API returns a plaintext version of the key and a copy of the key encrypted under a KMS key. The application can use the plaintext key to encrypt data, and then discard it from memory as soon as possible to reduce potential exposure.
+
+`Encrypt` API encrypts data under a specified KMS key.
+
 ## Parameter store
 `SecureString` are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of `SecureString` parameters, 1 API call per decryption.
 
@@ -228,14 +244,20 @@ The agent can also pre-process the records parsed from monitored files before se
 Data in AWS CodeCommit repositories is encrypted in transit and at rest.
 
 Credential types:
-- SSH Keys
-- Git credentials
-- AWS Access keys
+- SSH Keys: a locally generated public-private key pair that you can associate with your IAM user to communicate with CodeCommit repositories over SSH.
+- Git credentials: An IAM -generated user name and password pair you can use to communicate with CodeCommit repositories over HTTPS.
+- AWS Access keys: you can use with the credential helper included with the AWS CLI to communicate with CodeCommit repositories over HTTPS.
 
 Migrate GitHub repos to CodeCommit -> Git credentials generated from IAM
 
 ## CodeBuild
 `buildspec.yml` in the root directory.
+
+`post_build` phase is an optional sequence. It represents the commands, if any, that CodeBuild runs after the build. For example, you might use Maven to package the build artifacts into a JAR or WAR file, or you might push a Docker image into Amazon ECR. Then you might send a build notification through Amazon SNS.
+
+`install phase` commands are run during installation.
+
+![postbuild](post-build.webp)
 
 `CODEBUILD_KMS_KEY_ID` The identifier of the AWS KMS key that CodeBuild is using to encrypt the build output artifact (for example, `arn:aws:kms:region-ID:account-ID:key/key-ID` or alias/key-alias).
 
@@ -257,11 +279,17 @@ CodeBuild scales automatically to meet peak build requests.
 It is **not possible to SSH into the CodeBuild Docker container**, that's why you should test and fix errors locally.
 
 ## CodeDeploy
-`appspec.yml` for specifying **deployment hooks**. An EC2/On-Premises deployment hook is executed once per deployment to an instance. You can specify one or more scripts to run in a hook. Some hooks:
+CodeDeploy can deploy software packages using an archive that has been uploaded to an Amazon **S3 bucket**. The archive file will typically be a **.zip file** containing the code and files required to deploy the software package.
+
+`appspec.yml` for specifying **deployment hooks**. The content in the 'hooks' section of the AppSpec file varies, depending on the compute platform for your deployment. An EC2/On-Premises deployment hook is executed once per deployment to an instance. You can specify one or more scripts to run in a hook. Some hooks:
 - **ValidateService** is the last deployment lifecycle event. It is used to verify the deployment was completed successfully.
 - **AfterInstall** - You can use this deployment lifecycle event for tasks such as configuring your application or changing file permissions.
 - **ApplicationStart** - You typically use this deployment lifecycle event to restart services that were stopped during **ApplicationStop**
 - **AllowTraffic** - During this deployment lifecycle event, internet traffic is allowed to access instances after a deployment. This event is reserved for the AWS CodeDeploy agent and cannot be used to run scripts
+
+EC2 deployment example hooks: **BeforeInstall > AfterInstall > ApplicationStart > ValidateService**
+Lambda valid hooks: **BeforeAllowTraffic > AfterAllowTraffic**
+ECS valid hooks: **BeforeInstall > AfterInstall > AfterAllowTestTraffic > BeforeAllowTraffic**. `BeforeAllowTraffic` lifecycle event occurs before the updated task set is moved to the target group that is receiving live traffic. `AfterAllowTraffic` lifecycle event occurs after the updated task set is moved to the target group that is receiving live traffic.
 
 ![hooks](hooks.jpg)
 
@@ -274,11 +302,13 @@ The **AppSpec file** is used to:
 
 During deployment, the **CodeDeploy agent** looks up the name of the current event in the hooks section of the **AppSpec file**. If the event is not found, the CodeDeploy agent moves on to the next step. If the event is found, the CodeDeploy agent retrieves the list of scripts to execute. The scripts are run sequentially, in the order in which they appear in the file. The status of each script is logged in the CodeDeploy agent log file on the instance.
 
+**Only 2 deployment options**:
+
 **In Place Deployment**: Only for EC2/On-premises. The application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. You can use a load balancer so that each instance is deregistered during its deployment and then restored to service after the deployment is complete.
   
 **Blue/green Deployment**:
 - Lambda: All deploys are Blue/Green. Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function
-- ECS: traffic is shifted to a replacement task set in the same service. Traffic shifting can be **linear or canary**
+- ECS: traffic is shifted from the task set with the original version of an application to a replacement task set in the same service. Traffic shifting can be **linear or canary**
 - EC2: **New** instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group causing traffic to be **re-route** from one set of instances in the original environment to the replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running.
 - On-premises: B/G deploys do not work.
 
@@ -295,6 +325,10 @@ In an EC2/On-Premises deployment, a deployment group is a set of individual inst
 ## CodePipeline
 You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. Approval actions can't be added to Source stages. Source stages can contain only source actions.
 
+- CodePipeline can be configured as an event source for **EventBridge**
+
+- CodePipeline **cannot** be configured as a **trigger for Lambda**.
+  
 ## Application Load Balancer (ALB)
 After you create a target group, you cannot change its target type. The following are the possible target types:
 - `Instance` - The targets are specified by instance ID
@@ -326,6 +360,13 @@ Target Tracking Scaling policy metrics:
 - ASGAverageNetworkOut - Average number of bytes sent out on all network interfaces by the Auto Scaling group
 
 ## Beanstalk
+Fully managed, capacity provisioning, load-balanced and autoscaling app: **Beanstalk + RDS**. AWS Elastic Beanstalk will handle all capacity provisioning, load balancing, and auto-scaling for the web front-end and Amazon RDS provides push-button scaling for the backend.
+
+Source bundle uploaded from the console:
+- Single Zip, Must not exceed 512 MB
+- Not include a parent folder or top-level directory (subdirectories are fine)
+- `cron.yaml` file is required for **worker environment**
+
 Migrate a beanstalk environment from account A to account B: You must use saved configurations to migrate an Elastic Beanstalk environment between AWS accounts. You can save your environment's configuration as an object in Amazon Simple Storage Service (Amazon S3) that can be applied to other environments during environment creation, or applied to a running environment. Saved configurations are YAML formatted templates that define an environment's platform version, tier, configuration option settings, and tags. Create a saved configuration in Team A's account and download it to your local machine. Make the account-specific parameter changes and upload to the S3 bucket in Team B's account. From Elastic Beanstalk console, create an application from 'Saved Configurations'
 
 You can deploy any version of your application to any environment. Environments can be long-running or temporary. When you terminate an environment, **you can save its configuration** to recreate it later.
@@ -344,13 +385,13 @@ Configure HTTPS for an ALB via `.ebextensions` -> To update your AWS Elastic Bea
 
 **All at once**: **Quickest deployment method. Short loss of service**. Deploys the new application version to each instance. Then, the web proxy or application server might need to restart. As a result, your application might be unavailable to users (or have low availability) for a short time.
 
-**Immutable deployments**: Slower. Perform an immutable update to launch a full set of new instances running the new version of the application in a separate Auto Scaling group, alongside the instances running the old version. Immutable deployments can prevent issues caused by partially completed rolling deployments. Quick and safe rollback in case the deployment fails. With this method, Elastic Beanstalk performs an immutable update to deploy your application. In an immutable update, a second Auto Scaling group is launched in your environment and the new version serves traffic alongside the old version until the new instances pass health checks.
+**Immutable deployments**: Slower. Perform an immutable update to launch a full set of **new instances** running the new version of the application in a **new Auto Scaling group**, alongside the instances running the old version. Immutable deployments can prevent issues caused by partially completed rolling deployments. Quick and safe rollback in case the deployment fails. With this method, Elastic Beanstalk performs an immutable update to deploy your application. In an immutable update, a second Auto Scaling group is launched in your environment and the new version serves traffic alongside the old version until the new instances pass health checks.
 
 **Traffic-splitting deployments** let you perform canary testing as part of your application deployment. In a traffic-splitting deployment, Elastic Beanstalk launches a full set of new instances just like during an immutable deployment. It then forwards a specified percentage of incoming client traffic to the new application version for a specified evaluation period.
 
-**Rolling deployments**, Elastic Beanstalk splits the environment's Amazon EC2 instances into batches and deploys the new version of the application to one batch at a time.
+**Rolling deployments**, Elastic Beanstalk splits the environment's Amazon EC2 instances into batches and deploys the new version of the application to one batch at a time, **instances are the same**.
 
-**Rolling with additional batch**: **Slower than rolling**. Launches an extra batch of instances, then performs a rolling deployment. Launching the extra batch **takes time**, and ensures that the same **bandwidth is retained throughout the deployment**. This policy also **avoids any reduced availability**, although at a cost of an even **longer deployment** time compared to the Rolling method. Finally, this option is suitable if you must maintain the same bandwidth throughout the deployment
+**Rolling with additional batch**: **Slower than rolling**. Launches an extra batch of instances, then performs a rolling deployment (**updates the existing instances**). Launching the extra batch **takes time**, and ensures that the same **bandwidth is retained throughout the deployment**. This policy also **avoids any reduced availability**, although at a cost of an even **longer deployment** time compared to the Rolling method. Finally, this option is suitable if you must maintain the same bandwidth throughout the deployment
 
 **Blue/Green**: DNS changes
 
@@ -372,6 +413,7 @@ Log group data is **always encrypted** in CloudWatch Logs. You can optionally us
 
 ![log](log.jpg)
 
+**Metric filters** define the terms and patterns to look for in log data as it is sent to **CloudWatch Logs**. CloudWatch Logs uses these metric filters to turn log data into numerical CloudWatch metrics that you can graph or **set an alarm on**.
 ## Cloudwatch metrics
 You can configure custom metrics:
 - Standard resolution (default), with data having a one-minute granularity
@@ -379,13 +421,15 @@ You can configure custom metrics:
   
 Monitoring:
 - Basic monitoring
-- Detailed monitoring: provides more frequent metrics, published at **one-minute intervals**, instead of the **five-minute intervals** used in Amazon EC2 basic monitoring. Detailed monitoring is offered by only some services.
+- Detailed monitoring: provides more frequent metrics (but will not collect custom data), published at **one-minute intervals**, instead of the **five-minute intervals** used in Amazon EC2 basic monitoring. Detailed monitoring is offered by only some services.
 - High resolution `PutMetric` API call with `StorageResolution` param. `GetMetricStatistics` specify 1, 5, 10, 30 or any multiple of 60 for **high-resolution**. Multiple of 60 for **standard-resolution**
 
 Metric data is kept for 15 months, enabling you to view both up-to-the-minute data and historical data.
 Data points with a period of less than 60 seconds are available for 3 hours. These data points are high-resolution custom metrics. Data points with a period of 60 seconds (1 minute) are available for 15 days Data points with a period of 300 seconds (5 minute) are available for 63 days Data points with a period of 3600 seconds (1 hour) are available for 455 days (15 months)
 
 ## CloudWatch Alarms
+If you set an alarm on a **high-resolution metric**, you can specify a **high-resolution alarm** with a period of **10 seconds or 30 seconds**, or you can set a regular alarm with a period of any multiple of 60 seconds
+
 A metric alarm has the following possible states:
 - OK – The metric or expression is within the defined threshold.
 - ALARM – The metric or expression is outside of the defined threshold.
@@ -422,6 +466,15 @@ A Task state (`"Type": "Task"`) represents a single unit of work performed by a 
 
 Express Workflows have a maximum duration of five minutes and Standard workflows have a maximum duration of one year.
 
+In the Amazon States Language, these fields filter and control the flow of JSON from state to state:
+- InputPath: You can use InputPath to select **a portion of the state input**.
+- OutputPath: OutputPath enables you to select a portion of the state output to pass to the next state. This enables you to filter out unwanted information and pass only the portion of JSON that you care about.
+- ResultPath: Use ResultPath to **combine a task result with task input**, or to select one of these. The path you provide to ResultPath controls what information passes to the output. Use ResultPath in a Catch to include the error with the original input, instead of replacing it. 
+- Parameters
+- ResultSelector
+
+
+
 ## API Gateway
 A **stage** is a named reference to a deployment, which is a snapshot of the API. You use a stage to manage and optimize a particular deployment. For example, you can configure stage settings to enable caching, customize request throttling, configure logging, define stage variables, or attach a canary release for testing.
 
@@ -442,7 +495,10 @@ Your account is charged for accessing method-level CloudWatch metrics, but not t
 ## DynamoDB
 DynamoDB streams -> item level log for up to 24 hours.
 
-By default, the `Scan` operation processes data sequentially. Amazon DynamoDB returns data to the application in 1 MB increments, and an application performs additional Scan operations to retrieve the next 1 MB of data. -> Use **parallel scans**
+By default, the `Scan` operation processes data sequentially. Amazon DynamoDB returns data to the application in 1 MB increments, and an application performs additional Scan operations to retrieve the next 1 MB of data.
+- Use **parallel scans** for faster scans. For table size > 20 GB. 
+- Reduce `page-size` -> uses fewer read operations and creates a "pause" between each request.
+- The `Limit` parameter can be used to reduce the page size. The Scan operation provides a Limit parameter that you can use to set the page size for your request. Each Query or Scan request that has a smaller page size uses fewer read operations and creates a **"pause"** between each request.
 
 2 backup methods: on-demand and PITR, they copy the table to s3 but you do NOT have access to the s3 bucket.
 
@@ -451,7 +507,7 @@ DynamoDB uses **eventually consistent reads** by default. Read operations (such 
 `UpdateItem` action of DynamoDB APIs, edits an existing item's attributes or adds a new item to the table if it does not already exist.
 
 **Transactions**: 
-- `TransactWriteItems`: idempotent, groups up to 25 write actions in a single all-or-nothing operation. The aggregate size of the items in the transaction cannot exceed **4 MB**.
+- `TransactWriteItems`: idempotent, groups up to 25 write actions (distinct items) in a single all-or-nothing operation. The aggregate size of the items in the transaction cannot exceed **4 MB**.
 - `TransactGetItems`
 
 With a `BatchWriteItem` operation, it is possible that **only some of the actions** in the batch succeed while the others do not
@@ -465,7 +521,6 @@ If your application doesn't require strongly consistent reads, consider using **
 **DynamoDB Global Tables**: you can specify the AWS Regions where you want the table to be available. This can significantly reduce latency for your users. So, reducing the distance between the client and the DynamoDB endpoint is an important performance fix to be considered.
 
 ## ElastiCache
-
 All the nodes in a Redis cluster must reside in the same region
 
 While using Redis with cluster mode enabled, there are some limitations:
@@ -484,6 +539,8 @@ Redis-compatible in-memory data structure service that can be used as a data sto
 
 ![write](write.jpg)
 
+![redis](redis.webp)
+
 ## RDS
 IAM authorization: Available for **MySQL, PostGres and MariaDB**
 
@@ -494,6 +551,7 @@ You can enable **storage autoscaling** and set the max storage limit, triggers:
 
 Automated backups (0-35 days retention) are Region bound while manual snapshots and Read Replicas are supported across multiple Regions.
 
+Aurora MySQL DB -> `max_connections` up to 16000
 ## EC2
 Query the metadata at http://169.254.169.254/latest/meta-data. local IP address
 
@@ -590,7 +648,13 @@ If the bucket owner is also the object owner, the bucket owner gets the object a
 ![macie](macie.jpg)
 
 ## ECR
-
 `$(aws ecr get-login --no-include-email)` The get-login command retrieves a token that is valid for a specified registry for 12 hours, and then it prints a docker login command with that authorization token.
 
 `docker pull 1234567890.dkr.ecr.eu-west-1.amazonaws.com/demo:latest`
+
+## Athena
+- Athena is compatible with Hive-style partition formats.
+- Athena can pull data directly from the S3 source.
+- There is a cost associated with partitioning data. A higher number of partitions can also increase the overhead from retrieving and processing the partition metadata. Multiple smaller files can counter the benefit of using partitioning. If your data is heavily skewed to one partition value, and most queries use that value, then the overhead may wipe out the initial benefit
+
+Handle Athena timeouts for **Hive** -> MSK REPAIR TABLE command to update metadata in the catalog
