@@ -27,6 +27,7 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Lambda](#lambda)
 - [Step functions](#step-functions)
 - [API Gateway](#api-gateway)
+- [Cognito](#cognito)
 - [DynamoDB](#dynamodb)
 - [ElastiCache](#elasticache)
 - [RDS](#rds)
@@ -38,6 +39,9 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [Macie](#macie)
 - [ECR](#ecr)
 - [Athena](#athena)
+- [AppConfig](#appconfig)
+- [Amplify](#amplify)
+- [AppSync](#appsync)
 
 ## CLI
 `put-metric-data` command publishes metric data points to Amazon CloudWatch
@@ -152,6 +156,10 @@ Workflow:
 4. Synthesize one or more stacks in the app to create an AWS CloudFormation template. This step catches logical errors in defining resources.
 5. Deploy one or more stacks to your AWS account - It is optional (though good practice) to synthesize before deploying `cdk deploy`
 
+Synthesis is the process of converting AWS CDK stacks to AWS CloudFormation templates and assets. Changes should only be during the deployment phase and after AWS CloudFormation template has been created. This will allow it to roll back the change if there are any problems.
+
+The CDK Toolkit already provides the ability to **convert CDK stacks into CloudFormation templates**. There is no need to install CloudFormation.
+
 ## ECS
 ECS container agent (EC2) configuration at **/etc/ecs/ecs.config**. Here you specify the `ECS_CLUSTER='your_cluster_name' ` that the instance containers will belong to.
 
@@ -180,6 +188,9 @@ Task placement strategies can be specified when either running a task or creatin
 - **random** - Place tasks randomly.
 - **spread** - Place tasks evenly based on the specified value. Accepted values are instanceId (or host, which has the same effect) (instanceId -> distributes tasks evenly across the instances), or any platform or custom attribute that is applied to a container instance, such as `attribute:ecs.availability-zone`. Service tasks are spread based on the tasks from that service. Standalone tasks are spread based on the tasks from the same task group.
 
+In Amazon ECS, create a Docker image that runs the **X-Ray daemon**, upload it to a Docker image repository, and then deploy it to your Amazon ECS cluster. You can use port mappings and network mode settings in your task definition file to allow your application to communicate with the daemon container.
+
+![task-roles](task-roles.webp)
 ## SNS
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
@@ -216,6 +227,18 @@ To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKe
 `GenerateDataKey` API returns a plaintext version of the key and a copy of the key encrypted under a KMS key. The application can use the plaintext key to encrypt data, and then discard it from memory as soon as possible to reduce potential exposure.
 
 `Encrypt` API encrypts data under a specified KMS key.
+
+*Data keys* are encryption keys that you can use to encrypt data, including large amounts of data and other data encryption keys. **KMS does not store, manage, or track your data keys**, or perform cryptographic operations with data keys. You must use and manage data keys outside of AWS KMS – this is potentially less secure as you need to manage the security of these keys.
+
+To **create a data key**, call the `GenerateDataKey` operation. AWS KMS generates the data key. Then it encrypts a copy of the data key under a symmetric encryption KMS key that you specify. The operation returns a plaintext copy of the data key and the copy of the data key encrypted under the KMS key. The following image shows this operation.
+
+![datakey](datakey.webp)
+
+After using the **plaintext data key to encrypt data**, remove it from memory as soon as possible. You can safely store the encrypted data key with the encrypted data, so it is available to decrypt the data.
+
+![plaintext data key to encrypt data](plaintextkey.webp)
+
+`GenerateDataKeyWithoutPlainText` returns only an **encrypted data key**
 
 ## Parameter store
 `SecureString` are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of `SecureString` parameters, 1 API call per decryption.
@@ -323,7 +346,7 @@ CodeDeploy **rolls back deployments** by redeploying a previously deployed revis
 In an EC2/On-Premises deployment, a deployment group is a set of individual instances targeted for deployment. A deployment group contains individually tagged instances, Amazon EC2 instances in Amazon EC2 Auto Scaling groups, or both.
 
 ## CodePipeline
-You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. Approval actions can't be added to Source stages. Source stages can contain only source actions.
+You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. **Approval actions can't be added to Source stages**. Source stages can contain only source actions.
 
 - CodePipeline can be configured as an event source for **EventBridge**
 
@@ -414,6 +437,9 @@ Log group data is **always encrypted** in CloudWatch Logs. You can optionally us
 ![log](log.jpg)
 
 **Metric filters** define the terms and patterns to look for in log data as it is sent to **CloudWatch Logs**. CloudWatch Logs uses these metric filters to turn log data into numerical CloudWatch metrics that you can graph or **set an alarm on**.
+
+You can create **cross-account cross-Region dashboards**, which summarize your CloudWatch data from multiple AWS accounts and multiple Regions into one dashboard. Dashboards can be created from the console or programmatically.
+
 ## Cloudwatch metrics
 You can configure custom metrics:
 - Standard resolution (default), with data having a one-minute granularity
@@ -492,13 +518,29 @@ Access logging -> Only $context variables are supported (not $input, and so on).
 
 Your account is charged for accessing method-level CloudWatch metrics, but not the API-level or stage-level metrics.
 
+**Latency** metric measures the time between when API Gateway receives a request from a client and when it returns a response to the client. The latency includes the **integration latency** and other API Gateway overhead.
+
+**API Keys and Usage Plans**
+
+You can use API keys together with usage plans or Lambda authorizers to control access to your APIs. API Gateway can generate API keys on your behalf, or you can import them from a CSV file. You can generate an API key in API Gateway, or import it into API Gateway from an external source.
+
+To associate the newly created key with a usage plan the CreatUsagePlanKey API can be called. This creates a usage plan key for adding an existing API key to a usage plan.
+
+![usage-plans](usage-plans.jpeg)
+
+There are two types of API logging in CloudWatch: **execution logging** and **access logging**.
+## Cognito
+With **adaptive authentication**, you can configure your user pool to block suspicious sign-ins or add second factor authentication in response to an increased risk level.
+
+For each sign-in attempt, Amazon Cognito generates a risk score for how likely the sign-in request is to be from a compromised source. This risk score is based on many factors, including whether it detects a new device, user location, or IP address.
+
 ## DynamoDB
 DynamoDB streams -> item level log for up to 24 hours.
 
 By default, the `Scan` operation processes data sequentially. Amazon DynamoDB returns data to the application in 1 MB increments, and an application performs additional Scan operations to retrieve the next 1 MB of data.
 - Use **parallel scans** for faster scans. For table size > 20 GB. 
 - Reduce `page-size` -> uses fewer read operations and creates a "pause" between each request.
-- The `Limit` parameter can be used to reduce the page size. The Scan operation provides a Limit parameter that you can use to set the page size for your request. Each Query or Scan request that has a smaller page size uses fewer read operations and creates a **"pause"** between each request.
+- The `Limit` parameter can be used to reduce the `page-size`. The Scan operation provides a Limit parameter that you can use to set the page size for your request. Each Query or Scan request that has a smaller page size uses fewer read operations and creates a **"pause"** between each request.
 
 2 backup methods: on-demand and PITR, they copy the table to s3 but you do NOT have access to the s3 bucket.
 
@@ -519,6 +561,8 @@ With a `BatchWriteItem` operation, it is possible that **only some of the action
 
 If your application doesn't require strongly consistent reads, consider using **eventually consistent reads**. Eventually consistent reads are cheaper and are **less likely to experience high latency**.
 **DynamoDB Global Tables**: you can specify the AWS Regions where you want the table to be available. This can significantly reduce latency for your users. So, reducing the distance between the client and the DynamoDB endpoint is an important performance fix to be considered.
+
+Amazon DynamoDB **Encryption Client**. This client-side encryption library enables you to protect your table data before submitting it to DynamoDB. With *server-side encryption*, your data is encrypted in transit over an HTTPS connection, decrypted at the DynamoDB endpoint, and then re-encrypted before being stored in DynamoDB. *Client-side encryption* provides end-to-end protection for your data from its source to storage in DynamoDB.
 
 ## ElastiCache
 All the nodes in a Redis cluster must reside in the same region
@@ -552,6 +596,8 @@ You can enable **storage autoscaling** and set the max storage limit, triggers:
 Automated backups (0-35 days retention) are Region bound while manual snapshots and Read Replicas are supported across multiple Regions.
 
 Aurora MySQL DB -> `max_connections` up to 16000
+
+Amazon RDS can be used with *managed rotation*. When you rotate a secret, you update the credentials in both the secret and the database or service. Some services offer managed rotation, where the service configures and manages rotation for you.
 ## EC2
 Query the metadata at http://169.254.169.254/latest/meta-data. local IP address
 
@@ -606,6 +652,7 @@ To export a stack's output value, use the Export field in the Output section of 
 
 You can upload all the code as a **zip to S3** and refer the object in `AWS::Lambda::Function` block.
 
+Solve `DELETE_FAILED` state of a stack: To delete the stack you must choose to delete the stack in the console and then select to retain the resource(s) that failed to delete. This can also be achieved from the AWS CLI: `aws cloudformation delete-stack --stack-name my-stack --retain-resources <resource>`
 ## SAM
 
 SAM supports the following resource types:
@@ -619,6 +666,7 @@ SAM supports the following resource types:
 
 ![SAM](sam.jpg)
 
+Test a Lambda locally with AWS SAM CLI -> `sam local invoke <function>`
 ## X-Ray
 To ensure efficient tracing and provide a representative sample of the requests that your application serves, the X-Ray SDK applies a sampling algorithm to determine which requests get traced. By default, the **X-Ray SDK records the first request each second, and five percent of any additional requests**. X-Ray sampling is enabled directly from the AWS console, hence your application code does not need to change.
 
@@ -658,3 +706,12 @@ If the bucket owner is also the object owner, the bucket owner gets the object a
 - There is a cost associated with partitioning data. A higher number of partitions can also increase the overhead from retrieving and processing the partition metadata. Multiple smaller files can counter the benefit of using partitioning. If your data is heavily skewed to one partition value, and most queries use that value, then the overhead may wipe out the initial benefit
 
 Handle Athena timeouts for **Hive** -> MSK REPAIR TABLE command to update metadata in the catalog
+
+## AppConfig
+AWS AppConfig will automatically encrypt data at rest using AWS owned keys and AWS Key Management Service (KMS). **This layer cannot be disabled or altered by the customer**. The customer can add a second layer of encryption protection that they can control and manage using customer managed keys.
+
+## Amplify
+AWS Amplify supports connecting branches from the production code environment that will clone a repository so that features can be developed, tested and rolled back, if necessary, without impacting the latest version of the published application.
+
+## AppSync
+AWS AppSync’s API Cache settings provides three options: None, Full request caching, and Per-resolver caching. The cache settings can be configured for full request caching to cache all requests and responses.
