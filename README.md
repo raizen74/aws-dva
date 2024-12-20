@@ -216,9 +216,14 @@ Task placement strategies can be specified when either running a task or creatin
 - **random** - Place tasks randomly.
 - **spread** - Place tasks evenly based on the specified value. Accepted values are instanceId (or host, which has the same effect) (instanceId -> distributes tasks evenly across the instances), or any platform or custom attribute that is applied to a container instance, such as `attribute:ecs.availability-zone`. Service tasks are spread based on the tasks from that service. Standalone tasks are spread based on the tasks from the same task group.
 
+A **task placement constraint** is a rule that is considered during task placement. Task placement constraints can be specified when either running a task or creating a new service:
+- `distinctInstance`: Place each task on a different container instance. This task placement constraint can be specified when either running a task or creating a new service.
+- `memberOf`: Place tasks on container instances that satisfy an expression with Cluster Query Language
+
 In Amazon ECS, create a Docker image that runs the **X-Ray daemon**, upload it to a Docker image repository, and then deploy it to your Amazon ECS cluster. You can use port mappings and network mode settings in your task definition file to allow your application to communicate with the daemon container.
 
 ![task-roles](task-roles.webp)
+
 ## SNS
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
@@ -353,7 +358,7 @@ The **AppSpec file** is used to:
 - Map the source files in your application revision to their destinations on the instance.
 - Specify custom permissions for deployed files.
 - Specify scripts to be run on each instance at various stages of the deployment process.
-- MINIMUM properties required in `resources` for lambda deployments: `name, alias, currentversion, and targetversion`
+- MINIMUM properties required in `resources` for Lambda deployments: `name, alias, currentversion, and targetversion`
 
 During deployment, the **CodeDeploy agent** looks up the name of the current event in the hooks section of the **AppSpec file**. If the event is not found, the CodeDeploy agent moves on to the next step. If the event is found, the CodeDeploy agent retrieves the list of scripts to execute. The scripts are run sequentially, in the order in which they appear in the file. The status of each script is logged in the CodeDeploy agent log file on the instance.
 
@@ -362,9 +367,9 @@ During deployment, the **CodeDeploy agent** looks up the name of the current eve
 **In Place Deployment**: Only for EC2/On-premises. The application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. You can use a load balancer so that each instance is deregistered during its deployment and then restored to service after the deployment is complete.
   
 **Blue/green Deployment**:
-- Lambda: All deploys are Blue/Green. Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function
-- ECS: traffic is shifted from the task set with the original version of an application to a replacement task set in the same service. Traffic shifting can be **linear or canary**
-- EC2: **New** instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group causing traffic to be **re-route** from one set of instances in the original environment to the replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running.
+- Lambda: All deploys are Blue/Green. Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function. `CodeDeployDefault.LambdaLinear10PercentEvery1Minute`, `CodeDeployDefault.LambdaCanary10Percent5Minutes`.
+- ECS: traffic is shifted from the task set with the original version of an application to a replacement task set in the same service. Traffic shifting can be **linear or canary**: `CodeDeployDefault.ECSCanary10Percent15Minutes`, `CodeDeployDefault.ECSLinear10PercentEvery10Minutes`
+- EC2: **New** instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group causing traffic to be **re-route** from one set of instances in the original environment to the replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running. `HalfAtAtime` is only available for EC2/on-premises.
 - On-premises: B/G deploys do not work.
 
 ![codedeploy](codedeploy.jpg)
@@ -378,7 +383,7 @@ CodeDeploy **rolls back deployments** by redeploying a previously deployed revis
 In an EC2/On-Premises deployment, a deployment group is a set of individual instances targeted for deployment. A deployment group contains individually tagged instances, Amazon EC2 instances in Amazon EC2 Auto Scaling groups, or both.
 
 ## CodePipeline
-You can add an approval action to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. **Approval actions can't be added to Source stages**. Source stages can contain only source actions.
+You can add an **approval action** to a stage in a CodePipeline pipeline at the point where you want the pipeline to stop so someone can manually approve or reject the action. **Approval actions can't be added to Source stages**. Source stages can contain only source actions.
 
 - CodePipeline can be configured as an event source for **EventBridge**
 
@@ -440,7 +445,7 @@ Configure HTTPS for an ALB via `.ebextensions` -> To update your AWS Elastic Bea
 
 **All at once**: **Quickest deployment method. Short loss of service**. Deploys the new application version to each instance. Then, the web proxy or application server might need to restart. As a result, your application might be unavailable to users (or have low availability) for a short time.
 
-**Immutable deployments**: Slower. Perform an immutable update to launch a full set of **new instances** running the new version of the application in a **new Auto Scaling group**, alongside the instances running the old version. Immutable deployments can prevent issues caused by partially completed rolling deployments. Quick and safe rollback in case the deployment fails. With this method, Elastic Beanstalk performs an immutable update to deploy your application. In an immutable update, a second Auto Scaling group is launched in your environment and the new version serves traffic alongside the old version until the new instances pass health checks.
+**Immutable deployments**: Longest deployment. Perform an immutable update to launch a full set of **new instances** running the new version of the application in a **new Auto Scaling group**, alongside the instances running the old version. Immutable deployments can prevent issues caused by partially completed rolling deployments. **Quick and safe rollback** in case the deployment fails. With this method, Elastic Beanstalk performs an immutable update to deploy your application. In an immutable update, a second ASG is launched in **your environment** and the new version serves traffic alongside the old version until the new instances pass health checks.
 
 **Traffic-splitting deployments** let you perform canary testing as part of your application deployment. In a traffic-splitting deployment, Elastic Beanstalk launches a full set of new instances just like during an immutable deployment. It then forwards a specified percentage of incoming client traffic to the new application version for a specified evaluation period.
 
@@ -511,7 +516,7 @@ The **default account limit of 1,000 concurrent executions** will mean you can o
 
 ENV variables can have a maximum size of **4 KB**
 
-Alias can only point to function version, not another alias.
+`Alias` can only point to function version, not another alias.
 
 VPC: When you connect a function to a VPC, Lambda creates an **elastic network interface** for each combination of the security group and subnet in your function's VPC configuration.
 
@@ -521,6 +526,13 @@ Image max size: 10 GB
 
 To increase **provisioned concurrency** automatically as needed, use the Application Auto Scaling API to register a target and create a scaling policy. By allocating provisioned concurrency before an increase in invocations, you can ensure that all requests are served by **initialized instances** with very low latency. Provisioned Concurrency **cannot be used with the $LATEST version**. This feature can only be used with **published versions and aliases** of a function.
 
+Lambda always encrypts environment variables at rest.
+
+**Key Configuration**: On a per-function basis, you can configure Lambda to use an encryption key that you create and manage in AWS Key Management Service. These are referred to as customer managed customer master keys (CMKs) or customer managed keys. If you don't configure a customer managed key, Lambda uses an AWS managed CMK named aws/lambda, which Lambda creates in your account
+
+**Encryption helpers**: The Lambda console lets you encrypt environment variable values client side, before sending them to Lambda. This enhances security further by preventing secrets from being displayed unencrypted in the Lambda console, or in function configuration that's returned by the Lambda API. The console also provides sample code that you can adapt to decrypt the values in your function handler.
+
+![lambda-encryption](lambda-encryption.webp)
 ## Step functions
 A Task state (`"Type": "Task"`) represents a single unit of work performed by a state machine.
 `Resource` field is a required parameter for `Task` state.
@@ -574,12 +586,22 @@ To associate the newly created key with a usage plan the CreatUsagePlanKey API c
 There are two types of API logging in CloudWatch: **execution logging** and **access logging**.
 
 API Gateway **doesn't support** direct installation of **third-party SSL/TLS certificates**
+
+In Lambda **proxy integration**, when a client submits an API request, API Gateway passes to the integrated Lambda function the raw request as-is, except that the order of the request parameters is not preserved. This request data includes the request headers, query string parameters, URL path variables, payload, and API configuration data.
 ## Cognito
 With **adaptive authentication**, you can configure your user pool to block suspicious sign-ins or add second factor authentication in response to an increased risk level.
 
 For each sign-in attempt, Amazon Cognito generates a risk score for how likely the sign-in request is to be from a compromised source. This risk score is based on many factors, including whether it detects a new device, user location, or IP address.
 
 You can add a **custom logo** or customize the **CSS** for the Cognito hosted web UI.
+
+SAML-based identity federation is used with directory sources such as Microsoft Active Directory, not Facebook or Google.
+
+With **developer authenticated identities**, you can register and authenticate users via your own existing authentication process, while still using Amazon Cognito to synchronize user data and access AWS resources.
+
+Using **developer authenticated identities** involves interaction between the end user device, your backend for authentication, and Amazon Cognito.
+
+Amazon Cognito Identity Pools can **support unauthenticated identities** by providing a unique identifier and AWS credentials for users who do not authenticate with an identity provider
 ## DynamoDB
 TTL deletes are available at no additional cost.
 
@@ -594,10 +616,13 @@ By default, the `Scan` operation processes data sequentially. Amazon DynamoDB re
 
 DynamoDB uses **eventually consistent reads** by default. Read operations (such as GetItem, Query, and Scan) provide a `ConsistentRead` parameter to read the most recent value.
 
-`UpdateItem` action of DynamoDB APIs, edits an existing item's attributes or adds a new item to the table if it does not already exist.
+- `UpdateItem` - Edits an existing item's attributes, or adds a new item to the table if it does not already exist. You can put, delete, or add attribute values.
+- `GetItem` - Returns a set of attributes for the item with the given primary key.
+- `PutItem` - Creates a new item, or replaces an old item with a new item. If an item that has the same primary key as the new item already exists in the specified table, the new item completely replaces the existing item.
+- `DescribeTable` - Return information about the table such as the current status of the table, when it was created, the primary key schema, and any indexes on the table.
 
 **Transactions**: 
-- `TransactWriteItems`: idempotent, groups up to 25 write actions (distinct items) in a single all-or-nothing operation. The aggregate size of the items in the transaction cannot exceed **4 MB**.
+- `TransactWriteItems`: idempotent, groups up to 25 write actions (distinct items) in a single all-or-nothing operation. The aggregate size of the items in the transaction cannot exceed **4 MB**. Consume 2 WCU per request of 1 KB.
 - `TransactGetItems`
 
 With a `BatchWriteItem` operation, it is possible that **only some of the actions** in the batch succeed while the others do not
@@ -670,6 +695,12 @@ List of **ephemeral port ranges**:
 - A NAT gateway uses ports 1024-65535.
 - AWS Lambda functions use ports 1024-65535.
 
+Default credential provider chain SDK for Java:
+1. Env vars
+2. Java system properties
+3. ~/.aws/credentials file
+4. Amazon ECS container credentials: AWS_CONTAINER_CREDENTIALS_RELATIVE_URI var
+5. Instance profile credentials
 ## Cloudformation
 `Fn::FindInMap` returns the value corresponding to keys in a two-level map. Map of all the possible values for the base AMI: `!FindInMap [ MapName, TopLevelKey, SecondLevelKey ]`
 
@@ -699,7 +730,7 @@ To export a stack's output value, use the Export field in the Output section of 
 
 `cloudformation deploy` command deploys the specified AWS CloudFormation template by creating and then executing a changeset
 
-You can upload all the code as a **zip to S3** and refer the object in `AWS::Lambda::Function` block.
+You can upload all the code as a **zip to S3** and refer the object in `AWS::Lambda::Function` block. Or you can **write code directly in the template**, this is possible for simple functions using **Node.js or Python** which allow you to declare the code inline in the CloudFormation template.
 
 Solve `DELETE_FAILED` state of a stack: To delete the stack you must choose to delete the stack in the console and then select to retain the resource(s) that failed to delete. This can also be achieved from the AWS CLI: `aws cloudformation delete-stack --stack-name my-stack --retain-resources <resource>`
 ## SAM
