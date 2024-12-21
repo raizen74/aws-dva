@@ -34,7 +34,6 @@ AWS DEVELOPER ASSOCIATE (DVA-C02) EXAM NOTES - David Galera, December 2024
 - [RDS](#rds)
 - [EC2](#ec2)
 - [Cloudformation](#cloudformation)
-- [SAM](#sam-1)
 - [X-Ray](#x-ray)
 - [CloudTrail](#cloudtrail)
 - [Macie](#macie)
@@ -186,8 +185,22 @@ The CDK Toolkit already provides the ability to **convert CDK stacks into CloudF
 
 `aws cloudformation package` or `sam package` commands to prepare the local artifacts (local paths) that your AWS CloudFormation template references. The command uploads local artifacts to an S3 bucket, returns a copy of your template, replacing references to local artifacts with the S3 location where the command uploaded the artifacts e.g. `aws cloudformation package --template-file /path_to_template/template.json --s3-bucket bucket-name --output-template-file packaged-template.json`
 
-Once that is complete the template can be deployed using the “aws cloudformation deploy” or “sam deploy” commands
+Once that is complete the template can be deployed using the `aws cloudformation deploy` or `sam deploy` commands
 
+SAM supports the following resource types:
+- AWS::Serverless::Api
+- AWS::Serverless::Application
+- AWS::Serverless::Function
+- AWS::Serverless::HttpApi
+- AWS::Serverless::LayerVersion
+- AWS::Serverless::SimpleTable
+- AWS::Serverless::StateMachine
+
+![SAM](sam.jpg)
+
+Test a Lambda locally with AWS SAM CLI -> `sam local invoke <function>`
+
+The `sam init` command initializes a serverless application with an AWS SAM template. The template provides a folder structure for your Lambda functions and is connected to an event source such as APIs, S3 buckets, or DynamoDB tables. This application includes everything you need to get started and to eventually extend it into a production-scale applicatio
 ## ECS
 ECS container agent (EC2) configuration at **/etc/ecs/ecs.config**. Here you specify the `ECS_CLUSTER='your_cluster_name' ` that the instance containers will belong to.
 
@@ -211,14 +224,16 @@ Central logs in Fargate: Using the `awslogs log driver` you can configure the co
 
 If you're using the **EC2 launch type (and not Fargate)** for your tasks and want to turn on the awslogs log driver, your Amazon ECS container instances require at least **version 1.9.0 of the container agent**.
 
-Task placement strategies can be specified when either running a task or creating a new service:
+Task placement (only for EC2 Launch Type) strategies can be specified when either running a task or creating a new service:
 - **binpack** - Place tasks based on the least available amount of CPU or memory. This minimizes the number of instances in use.
-- **random** - Place tasks randomly.
+- **random** - Place tasks randomly. LEAST configuration.
 - **spread** - Place tasks evenly based on the specified value. Accepted values are instanceId (or host, which has the same effect) (instanceId -> distributes tasks evenly across the instances), or any platform or custom attribute that is applied to a container instance, such as `attribute:ecs.availability-zone`. Service tasks are spread based on the tasks from that service. Standalone tasks are spread based on the tasks from the same task group.
 
 A **task placement constraint** is a rule that is considered during task placement. Task placement constraints can be specified when either running a task or creating a new service:
 - `distinctInstance`: Place each task on a different container instance. This task placement constraint can be specified when either running a task or creating a new service.
 - `memberOf`: Place tasks on container instances that satisfy an expression with Cluster Query Language
+
+Task placement strategies and constraints are not supported for tasks using the Fargate launch type. By default, Fargate tasks are spread across Availability Zones.
 
 In Amazon ECS, create a Docker image that runs the **X-Ray daemon**, upload it to a Docker image repository, and then deploy it to your Amazon ECS cluster. You can use port mappings and network mode settings in your task definition file to allow your application to communicate with the daemon container.
 
@@ -228,6 +243,8 @@ In Amazon ECS, create a Docker image that runs the **X-Ray daemon**, upload it t
 By default, a topic **subscriber** receives every message that's published to the topic. To receive only a subset of the messages, a subscriber must assign a **filter policy** to the topic subscription. Amazon SNS supports policies that act on the message attributes or the message body.
 
 ## SQS
+**long polling** is the fastest way of retrieving messages from the queue as messages are delivered as soon as they are available.
+
 **MessageDeduplicationId**: The message deduplication ID is the token used for the deduplication of sent messages. If a message with a particular message deduplication ID is sent successfully, any messages sent with the same message deduplication ID are accepted successfully but aren't delivered during the 5-minute deduplication interval.
 
 **FIFO queues not allowed** for s3 event notification destination.
@@ -348,7 +365,7 @@ CodeDeploy can deploy software packages using an archive that has been uploaded 
 
 EC2 deployment example hooks: **BeforeInstall > AfterInstall > ApplicationStart > ValidateService**
 Lambda valid hooks: **BeforeAllowTraffic > AfterAllowTraffic**
-ECS valid hooks: **BeforeInstall > AfterInstall > AfterAllowTestTraffic > BeforeAllowTraffic**. `BeforeAllowTraffic` lifecycle event occurs before the updated task set is moved to the target group that is receiving live traffic. `AfterAllowTraffic` lifecycle event occurs after the updated task set is moved to the target group that is receiving live traffic.
+ECS valid hooks: **BeforeInstall > AfterInstall > AfterAllowTestTraffic > BeforeAllowTraffic > AfterAllowTraffic**. `BeforeAllowTraffic` lifecycle event occurs before the updated task set is moved to the target group that is receiving live traffic. `AfterAllowTraffic` lifecycle event occurs after the updated task set is moved to the target group that is receiving live traffic.
 
 ![hooks](hooks.jpg)
 
@@ -503,6 +520,8 @@ A metric alarm has the following possible states:
 An alarm watches a single metric over a specified time, and performs one or more specified actions, based on the value of the metric relative to a threshold over time. The action is a notification sent to an Amazon SNS topic or an Auto Scaling policy. You can also add alarms to dashboards.
 
 ## Lambda
+For each execution status such as Success or Failure you can choose one of four destinations: another Lambda function, SNS, SQS, or EventBridge.
+
 Event source mapping need lambda role permissions to invoke the source services:
 - SQS
 - DynamoDB
@@ -557,6 +576,10 @@ In the Amazon States Language, these fields filter and control the flow of JSON 
 
 
 ## API Gateway
+**Error Codes**:
+- 504: Integration timeout e.g. lambda > 29s
+- 502, 429 lambda throttling
+
 A **stage** is a named reference to a deployment, which is a snapshot of the API. You use a stage to manage and optimize a particular deployment. For example, you can configure stage settings to enable caching, customize request throttling, configure logging, define stage variables, or attach a canary release for testing.
 
 **Promote a stage**: The promotion can be done by redeploying the API to the prod stage OR updating a stage variable value from the stage name of test to that of prod.
@@ -637,7 +660,9 @@ If your application doesn't require strongly consistent reads, consider using **
 
 Amazon DynamoDB **Encryption Client**. This client-side encryption library enables you to protect your table data before submitting it to DynamoDB. With *server-side encryption*, your data is encrypted in transit over an HTTPS connection, decrypted at the DynamoDB endpoint, and then re-encrypted before being stored in DynamoDB. *Client-side encryption* provides end-to-end protection for your data from its source to storage in DynamoDB.
 
-The `BatchGetItem` operation in DynamoDB permits the retrieval of multiple items from **one or more tables** in a single operation, thereby minimizing network traffic and improving overall application performance.
+The `BatchGetItem` operation in DynamoDB permits the retrieval of multiple items from **one or more tables** in a single operation, thereby minimizing network traffic and improving overall application performance. A single operation can retrieve up to 16 MB of data, which can contain as many as 100 items. In order to minimize response latency, `BatchGetItem` retrieves items in parallel.
+
+`Scan` uses more RCUs than a `Query` operation
 ## ElastiCache
 All the nodes in a Redis cluster must reside in the same region
 
@@ -733,20 +758,8 @@ To export a stack's output value, use the Export field in the Output section of 
 You can upload all the code as a **zip to S3** and refer the object in `AWS::Lambda::Function` block. Or you can **write code directly in the template**, this is possible for simple functions using **Node.js or Python** which allow you to declare the code inline in the CloudFormation template.
 
 Solve `DELETE_FAILED` state of a stack: To delete the stack you must choose to delete the stack in the console and then select to retain the resource(s) that failed to delete. This can also be achieved from the AWS CLI: `aws cloudformation delete-stack --stack-name my-stack --retain-resources <resource>`
-## SAM
 
-SAM supports the following resource types:
-- AWS::Serverless::Api
-- AWS::Serverless::Application
-- AWS::Serverless::Function
-- AWS::Serverless::HttpApi
-- AWS::Serverless::LayerVersion
-- AWS::Serverless::SimpleTable
-- AWS::Serverless::StateMachine
-
-![SAM](sam.jpg)
-
-Test a Lambda locally with AWS SAM CLI -> `sam local invoke <function>`
+`Change Sets` allow you to preview how proposed changes to a stack might impact your running resources.
 
 ## X-Ray
 To ensure efficient tracing and provide a representative sample of the requests that your application serves, the X-Ray SDK applies a sampling algorithm to determine which requests get traced. By default, the **X-Ray SDK records the first request each second, and five percent of any additional requests**. X-Ray sampling is enabled directly from the AWS console, hence your application code does not need to change.
