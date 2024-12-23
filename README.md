@@ -231,7 +231,7 @@ Task placement (only for EC2 Launch Type) strategies can be specified when eithe
 
 A **task placement constraint** is a rule that is considered during task placement. Task placement constraints can be specified when either running a task or creating a new service:
 - `distinctInstance`: Place each task on a different container instance. This task placement constraint can be specified when either running a task or creating a new service.
-- `memberOf`: Place tasks on container instances that satisfy an expression with Cluster Query Language
+- `memberOf`: Place tasks on container instances that satisfy an expression with Cluster Query Language. Can be specified with the following actions: `CreateService`, `UpdateService`, `RegisterTaskDefinition`, and `RunTask`.
 
 Task placement strategies and constraints are not supported for tasks using the Fargate launch type. By default, Fargate tasks are spread across Availability Zones.
 
@@ -266,7 +266,7 @@ Delay queues time range - 0 sec, 15 min
 The **default message retention period** is 4 days (60s - 14 days). `SetQueueAttributes` action.
 
 ## KMS
-Support sending data up to **4 KB** to be encrypted directly.
+To encrypt large quantities of data with the AWS Key Management Service (KMS), you must use a data encryption key rather than a customer master keys (CMK). This is because a **CMK can only encrypt up to 4KB** in a single operation
 
 To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKeyWithoutPlaintext` and `Decrypt`
 
@@ -274,13 +274,11 @@ To encrypt an EBS volume attached to an EC2 you need 2 KMS APIs: `GenerateDataKe
 
 ![kms](kms.jpg)
 
-`GenerateDataKey` API returns a plaintext version of the key and a copy of the key encrypted under a KMS key. The application can use the plaintext key to encrypt data, and then discard it from memory as soon as possible to reduce potential exposure. Data key caching and increase service quota to avoid ThrottlingErrors
-
 `Encrypt` API encrypts data under a specified KMS key.
 
 *Data keys* are encryption keys that you can use to encrypt data, including large amounts of data and other data encryption keys. **KMS does not store, manage, or track your data keys**, or perform cryptographic operations with data keys. You must use and manage data keys outside of AWS KMS – this is potentially less secure as you need to manage the security of these keys.
 
-To **create a data key**, call the `GenerateDataKey` operation. AWS KMS generates the data key. Then it encrypts a copy of the data key under a symmetric encryption KMS key that you specify. The operation returns a plaintext copy of the data key and the copy of the data key encrypted under the KMS key. The following image shows this operation.
+To **create a data key**, call the `GenerateDataKey` operation. AWS KMS generates the data key. Then it encrypts a copy of the data key under a symmetric encryption KMS key that you specify. The operation returns a plaintext copy of the data key and the copy of the data key encrypted under the KMS key. The following image shows this operation. The application can use the plaintext key to encrypt data, and then discard it from memory as soon as possible to reduce potential exposure. Data key caching and increase service quota to avoid ThrottlingErrors
 
 ![datakey](datakey.webp)
 
@@ -288,7 +286,7 @@ After using the **plaintext data key to encrypt data**, remove it from memory as
 
 ![plaintext data key to encrypt data](plaintextkey.webp)
 
-`GenerateDataKeyWithoutPlainText` returns only an **encrypted data key**
+`GenerateDataKeyWithoutPlainText` returns only an **encrypted data key**, use it when you do not want to encrypt the data immediately but delegate the encryption to another service.
 
 ## Parameter store
 `SecureString` are parameters that have a **plaintext parameter name** and an **encrypted parameter value**. Parameter Store uses **AWS KMS** to encrypt and decrypt the parameter values of `SecureString` parameters, 1 API call per decryption.
@@ -302,6 +300,7 @@ Parameter Store supports parameter policies that are available for parameters th
 You can attach **resource-based** policies to a **secret**, to allow Principals e.g. IAM **Roles**, **Users**, other AWS **accounts**... to access them.
 
 Secrets Manager natively supports rotating credentials for databases hosted on Amazon **RDS** and Amazon **DocumentDB** and clusters hosted on Amazon **Redshift**.
+
 ## Kinesis data streams
 
 Limits can be exceeded by either data throughput (1MB/s per shard) or the number of PUT records (1000 puts/s). While the capacity limits are exceeded, the **put data call** will be rejected with a `ProvisionedThroughputExceeded` exception (data stream’s input data rate exceeded).
@@ -315,6 +314,13 @@ Each `PutRecords` request can support up to 500 records. Each record in the requ
 You can install the agent on Linux-based server environments such as web servers, log servers, and database servers. After installing the agent, configure it by specifying the files to monitor and the stream for the data. After the agent is configured, it durably collects data from the files and reliably sends it to the stream.
 
 The agent can also pre-process the records parsed from monitored files before sending them to your stream. You can enable this feature by adding the dataProcessingOptions configuration setting to your file flow. One or more processing options can be added and they will be performed in the specified order.
+
+Kinesis Producer Library (KPL):
+- Writes to one or more Kinesis data streams with an automatic and configurable retry mechanism
+- Collects records and uses PutRecords to write multiple records to multiple shards per request
+- Aggregates user records to increase payload size and improve throughput
+- Integrates seamlessly with the Kinesis Client Library (KCL) to de-aggregate batched records on the consumer
+- Submits Amazon CloudWatch metrics on your behalf to provide visibility into producer performance
 
 ## CodeCommit
 Data in AWS CodeCommit repositories is encrypted in transit and at rest.
@@ -355,7 +361,13 @@ CodeBuild scales automatically to meet peak build requests.
 It is **not possible to SSH into the CodeBuild Docker container**, that's why you should test and fix errors locally.
 
 ## CodeDeploy
-CodeDeploy can deploy software packages using an archive that has been uploaded to an Amazon **S3 bucket**. The archive file will typically be a **.zip file** containing the code and files required to deploy the software package.
+In CodeDeploy, a revision contains a version of the source files CodeDeploy will deploy to your instances or scripts CodeDeploy will run on your instances. You plan the revision, add an AppSpec file to the revision, and then push the revision to **Amazon S3 or GitHub**. After you push the revision, you can deploy it. CodeDeploy can deploy software packages using an archive that has been uploaded to an Amazon **S3 bucket**. The archive file will typically be a **.zip file** containing the code and files required to deploy the software package.
+
+The **AppSpec file** is used to:
+- Map the source files in your application revision to their destinations on the instance.
+- Specify custom permissions for deployed files.
+- Specify scripts to be run on each instance at various stages of the deployment process.
+- MINIMUM properties required in `resources` for Lambda deployments: `name, alias, currentversion, and targetversion`
 
 `appspec.yml` for specifying **deployment hooks**. The content in the 'hooks' section of the AppSpec file varies, depending on the compute platform for your deployment. An EC2/On-Premises deployment hook is executed once per deployment to an instance. You can specify one or more scripts to run in a hook. Some hooks:
 - **ValidateService** is the last deployment lifecycle event. It is used to verify the deployment was completed successfully.
@@ -371,11 +383,6 @@ ECS valid hooks: **BeforeInstall > AfterInstall > AfterAllowTestTraffic > Before
 
 ![hooks-v2](hooksv2.jpg)
 
-The **AppSpec file** is used to:
-- Map the source files in your application revision to their destinations on the instance.
-- Specify custom permissions for deployed files.
-- Specify scripts to be run on each instance at various stages of the deployment process.
-- MINIMUM properties required in `resources` for Lambda deployments: `name, alias, currentversion, and targetversion`
 
 During deployment, the **CodeDeploy agent** looks up the name of the current event in the hooks section of the **AppSpec file**. If the event is not found, the CodeDeploy agent moves on to the next step. If the event is found, the CodeDeploy agent retrieves the list of scripts to execute. The scripts are run sequentially, in the order in which they appear in the file. The status of each script is logged in the CodeDeploy agent log file on the instance.
 
@@ -384,7 +391,10 @@ During deployment, the **CodeDeploy agent** looks up the name of the current eve
 **In Place Deployment**: Only for EC2/On-premises. The application on each instance in the deployment group is stopped, the latest application revision is installed, and the new version of the application is started and validated. You can use a load balancer so that each instance is deregistered during its deployment and then restored to service after the deployment is complete.
   
 **Blue/green Deployment**:
-- Lambda: All deploys are Blue/Green. Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function. `CodeDeployDefault.LambdaLinear10PercentEvery1Minute`, `CodeDeployDefault.LambdaCanary10Percent5Minutes`.
+- Lambda: Traffic is shifted from one version of a Lambda function to a new version of the same Lambda function. `CodeDeployDefault.LambdaLinear10PercentEvery1Minute`, `CodeDeployDefault.LambdaCanary10Percent5Minutes`.
+
+![lambda-deploy](lambda-deploy.webp)
+
 - ECS: traffic is shifted from the task set with the original version of an application to a replacement task set in the same service. Traffic shifting can be **linear or canary**: `CodeDeployDefault.ECSCanary10Percent15Minutes`, `CodeDeployDefault.ECSLinear10PercentEvery10Minutes`
 - EC2: **New** instances are provisioned for the **replacement** environment, latest revision is installed in them, optional testing, new instances are registered in the ALB target group causing traffic to be **re-route** from one set of instances in the original environment to the replacement set of instances. Instances in the original environment are deregistered and can be terminated or kept running. `HalfAtAtime` is only available for EC2/on-premises.
 - On-premises: B/G deploys do not work.
@@ -768,9 +778,7 @@ You can use X-Ray to collect data across AWS Accounts. The **X-Ray agent can ass
 
 You can use X-Ray to track requests from applications or services spread across **multiple Regions**.
 
-**Index** your XRay traces to search and filter: **Annotations** are simple key-value pairs with string, number, or Boolean values that are indexed for use with filter expressions. Use annotations to record data that you want to use to group traces in the console, or when calling the GetTraceSummaries API.
-
-X-Ray indexes up to 50 annotations per trace.
+**Index** your XRay traces to search and filter: **Annotations** are simple key-value pairs with string, number, or Boolean values that are indexed for use with **filter expressions**. Use annotations to record data that you want to use to group traces in the console, or when calling the `GetTraceSummaries` API. X-Ray indexes **up to 50 annotations per trace**.
 
 **Metadata** are key-value pairs with values of **any type**, including objects and lists, but that is not indexed. Use metadata to record data you want to store in the trace but don't need to use for searching traces.
 
